@@ -1,0 +1,29 @@
+original,replacement,good,context
+bubbles,balls,false,general
+constellations,groups of stars,true,astronomy
+fundamental,key,true,academic
+adequate,enough,true,academic
+build,create,false,professional
+destabilisation,breakdown,true,academic
+proliferation,rapid spread,true,academic
+demonstrated,shown,true,academic
+approximately,about,true,general
+accommodation,place to stay,true,general
+address,location,true,general
+difficult,hard,true,general
+conversations,talks,true,professional
+curated,hand-picked,true,professional
+partnerships,tie-ups,true,professional
+most,#,false,user-feedback
+companies,introduction,false,user-feedback
+once.,arth,false,user-feedback
+up,i'm,false,user-feedback
+the,mohan,,false,user-feedback
+show,hi,,false,user-feedback
+relevant,astronomer.,false,user-feedback
+ones,i'm,false,user-feedback
+smart,and,false,user-feedback
+stay,an,false,user-feedback
+brilliant,gifted,true,general
+building,creating,false,general
+incredible,remarkable,true,general

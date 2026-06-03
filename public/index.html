@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ClearText — Dyslexia-Friendly Document Tool</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet"/>
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <div class="logo">ClearText</div>
+      <div class="tagline">Makes reading easier for dyslexic readers</div>
+    </div>
+  </header>
+
+  <!-- Settings Toggle Button -->
+  <button class="settings-toggle" onclick="toggleSettings()" aria-label="Display Settings">
+    ⚙ Settings
+  </button>
+
+  <!-- Settings Panel -->
+  <div class="settings-panel" id="settings-panel">
+    <div class="settings-header">
+      <h3>Display Settings</h3>
+      <button class="settings-close" onclick="toggleSettings()">✕</button>
+    </div>
+
+    <div class="settings-group">
+      <p class="settings-label">Font</p>
+      <div class="settings-options">
+        <button class="opt-btn active" data-group="font" data-value="comic" onclick="setSetting('font', this)">Comic Neue</button>
+        <button class="opt-btn" data-group="font" data-value="opendys" onclick="setSetting('font', this)">OpenDyslexic</button>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <p class="settings-label">Letter and Word Spacing</p>
+      <div class="settings-options">
+        <button class="opt-btn active" data-group="spacing" data-value="normal" onclick="setSetting('spacing', this)">Default</button>
+        <button class="opt-btn" data-group="spacing" data-value="wide" onclick="setSetting('spacing', this)">Extra Wide</button>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <p class="settings-label">Colour Theme</p>
+      <div class="settings-options theme-options">
+        <button class="opt-btn theme-btn active" data-group="theme" data-value="cream" onclick="setSetting('theme', this)">
+          <span class="theme-swatch" style="background:#FAFAF7; border: 1.5px solid #ccc;"></span>
+          Cream
+        </button>
+        <button class="opt-btn theme-btn" data-group="theme" data-value="dark" onclick="setSetting('theme', this)">
+          <span class="theme-swatch" style="background:#1C1C1E;"></span>
+          Dark
+        </button>
+        <button class="opt-btn theme-btn" data-group="theme" data-value="peach" onclick="setSetting('theme', this)">
+          <span class="theme-swatch" style="background:#FDEBD0;"></span>
+          Peach
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="settings-overlay" id="settings-overlay" onclick="toggleSettings()"></div>
+
+  <main>
+
+    <!-- STEP 1: INPUT -->
+    <section class="card" id="section-input">
+      <h2 class="step-label">Step 1 — Upload or Paste Your Text</h2>
+
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" id="file-input" accept=".pdf,.docx,.txt" hidden />
+        <div class="upload-icon">📄</div>
+        <p class="upload-text">Drag and drop a file here, or <button class="link-btn" onclick="document.getElementById('file-input').click()">browse</button></p>
+        <p class="upload-hint">Supports PDF, Word (.docx), and plain text (.txt)</p>
+        <p class="file-name" id="file-name"></p>
+      </div>
+
+      <div class="divider"><span>or</span></div>
+
+      <textarea id="paste-input" placeholder="Paste your text here..."></textarea>
+      <div class="char-count"><span id="char-count">0</span> characters</div>
+    </section>
+
+    <!-- STEP 2: PROFILE -->
+    <section class="card" id="section-profile">
+      <h2 class="step-label">Step 2 — Choose Your Reading Profile</h2>
+      <p class="profile-desc">Select which types of words should be simplified. Not sure? Leave it on All.</p>
+
+      <div class="profile-grid">
+        <label class="profile-card selected" data-value="all">
+          <input type="radio" name="profile" value="all" checked hidden />
+          <div class="profile-icon">✦</div>
+          <div class="profile-title">All</div>
+          <div class="profile-sub">Letter patterns, complex words, and long words</div>
+        </label>
+        <label class="profile-card" data-value="letters">
+          <input type="radio" name="profile" value="letters" hidden />
+          <div class="profile-icon">bd</div>
+          <div class="profile-title">Letter Confusion</div>
+          <div class="profile-sub">b/d, p/q, l/i, ll/li, n/u patterns</div>
+        </label>
+        <label class="profile-card" data-value="length">
+          <input type="radio" name="profile" value="length" hidden />
+          <div class="profile-icon">abc…</div>
+          <div class="profile-title">Long Words</div>
+          <div class="profile-sub">Words longer than 6-8 characters</div>
+        </label>
+        <label class="profile-card" data-value="complex">
+          <input type="radio" name="profile" value="complex" hidden />
+          <div class="profile-icon">▓</div>
+          <div class="profile-title">Visual Complexity</div>
+          <div class="profile-sub">Dense, visually crowded words</div>
+        </label>
+      </div>
+    </section>
+
+    <!-- STEP 3: PROCESS -->
+    <section class="card" id="section-process">
+      <h2 class="step-label">Step 3 — Transform</h2>
+      <p class="profile-desc">When you're ready, hit the button below. This usually takes 10-20 seconds.</p>
+      <button class="btn-primary" id="btn-transform" onclick="runTransform()">
+        Transform Text
+      </button>
+      <div class="progress-wrap" id="progress-wrap" style="display:none">
+        <div class="progress-bar" id="progress-bar"></div>
+        <p class="progress-label" id="progress-label">Sending to Gemini...</p>
+      </div>
+    </section>
+
+    <!-- OUTPUT -->
+    <section class="card" id="section-output" style="display:none">
+      <div class="output-header">
+        <h2 class="step-label">Your Transformed Text</h2>
+        <div class="score-badge" id="score-badge">
+          <span class="score-label">Similarity Score</span>
+          <span class="score-value" id="score-value">--</span>
+        </div>
+      </div>
+
+      <div class="output-box" id="output-box"></div>
+
+      <div class="feedback-row">
+  <p class="feedback-label">Was this transformation accurate?</p>
+  <div class="feedback-btns">
+    <button class="feedback-btn good" onclick="submitFeedback(true)" title="Good output">👍 Looks good</button>
+    <button class="feedback-btn bad" onclick="submitFeedback(false)" title="Bad output">👎 Something's off</button>
+  </div>
+  <p class="feedback-thanks" id="feedback-thanks" style="display:none">Thanks for the feedback!</p>
+</div>
+
+<div class="output-actions">
+  <button class="btn-secondary" onclick="downloadPDF()">Download PDF</button>
+  <button class="btn-secondary" onclick="window.print()">Print</button>
+</div>
+    </section>
+
+  </main>
+
+  <footer>
+    <p>ClearText — Built for dyslexic readers and the educators who support them</p>
+  </footer>
+
+  <script src="libs/pdf.min.js"></script>
+  <script src="libs/mammoth.browser.min.js"></script>
+  <script src="libs/jspdf.umd.min.js"></script>
+  <script src="libs/marked.min.js"></script>
+  <script src="app.js"></script>
+
+</body>
+</html>
