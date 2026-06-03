@@ -424,7 +424,6 @@ textarea:focus {
   line-height: 2.2;
   letter-spacing: 0.08em;
   word-spacing: 0.2em;
-  white-space: pre-wrap;
   min-height: 200px;
   color: var(--text);
 }

@@ -116,10 +116,16 @@ ${text}`;
       return res.status(500).json({ error: data.error?.message || 'Groq request failed' });
     }
 
-    const transformed = data.choices?.[0]?.message?.content;
-    if (!transformed) return res.status(500).json({ error: 'Groq returned no output' });
+    let transformed = data.choices?.[0]?.message?.content;
+if (!transformed) return res.status(500).json({ error: 'Groq returned no output' });
 
-    res.status(200).json({ transformed });
+// Fix merged last bullet — split "- item text Next sentence" into two lines
+transformed = transformed.replace(
+  /([\*\-] .+?)\s{1,2}([A-Z][^*\-\n])/g,
+  '$1\n\n$2'
+);
+
+res.status(200).json({ transformed });
   } catch (err) {
     console.log('Catch error:', err.message);
     res.status(500).json({ error: err.message });

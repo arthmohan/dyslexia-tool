@@ -9,8 +9,5 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
-  "dependencies": {
-    "node-fetch": "^3.3.2"
-  }
+  "description": ""
 }
