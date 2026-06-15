@@ -376,6 +376,107 @@ function downloadPDF() {
 
 // ── Feedback ─────────────────────────────────────────────────────────────────
 
+// Words too common/short to ever be meaningful feedback pairs.
+const STOP_WORDS = new Set([
+  'the','a','an','is','are','was','were','be','been','being','have','has','had',
+  'do','does','did','will','would','could','should','may','might','shall','can',
+  'to','of','in','for','on','with','at','by','from','as','into','through',
+  'during','before','after','above','below','between','out','off','over','under',
+  'again','further','then','once','here','there','when','where','why','how',
+  'all','both','each','few','more','most','other','some','such','no','nor','not',
+  'only','own','same','so','than','too','very','just','because','but','and','or',
+  'if','while','although','though','that','this','these','those','i','me','my',
+  'we','our','you','your','he','him','his','she','her','it','its','they','them',
+  'their','what','which','who','whom'
+]);
+
+// Strips markdown formatting and punctuation, returns lowercase word array.
+function tokenize(text) {
+  return text
+    .replace(/[#*_`~>\[\]()!]/g, '')        // strip markdown chars
+    .replace(/[^\w\s'-]/g, ' ')              // strip remaining punctuation
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(w => w.length > 0);
+}
+
+// Extracts word substitutions using a context-verified two-pointer walk.
+// Only records a pair when:
+//   - we arrived here after at least one matching word (left context verified)
+//   - 1 original word was replaced by 1-3 transformed words
+//   - the next word after the replacement matches in both texts (right context verified)
+//   - the original word is >2 chars and not a stop word
+function extractChangedWords(originalText, transformedText) {
+  const origWords = tokenize(originalText);
+  const transWords = tokenize(transformedText);
+  const pairs = [];
+
+  let oi = 0;
+  let ti = 0;
+  let hadMatch = false;
+
+  while (oi < origWords.length && ti < transWords.length) {
+    // Words match: advance both pointers.
+    if (origWords[oi] === transWords[ti]) {
+      hadMatch = true;
+      oi++;
+      ti++;
+      continue;
+    }
+
+    // Words differ. Only attempt extraction if we have left context (hadMatch).
+    if (!hadMatch) {
+      oi++;
+      ti++;
+      continue;
+    }
+
+    // Try to match: 1 original word replaced by 1, 2, or 3 transformed words,
+    // with the word after the replacement matching in both texts (right context).
+    let found = false;
+    const nextOrig = origWords[oi + 1];
+
+    if (nextOrig) {
+      for (let span = 1; span <= 3; span++) {
+        if (ti + span < transWords.length && transWords[ti + span] === nextOrig) {
+          const origWord = origWords[oi];
+          const replacement = transWords.slice(ti, ti + span).join(' ');
+
+          if (origWord.length > 2 && !STOP_WORDS.has(origWord) && replacement.length > 1) {
+            pairs.push({ original: origWord, replacement });
+          }
+
+          oi += 1;
+          ti += span;
+          found = true;
+          break;
+        }
+      }
+    }
+
+    if (!found) {
+      // Can't cleanly extract here. Try to resync by scanning ahead.
+      hadMatch = false;
+      const resyncLimit = Math.min(8, origWords.length - oi, transWords.length - ti);
+      let resynced = false;
+      for (let ahead = 1; ahead <= resyncLimit; ahead++) {
+        if (origWords[oi + ahead] && origWords[oi + ahead] === transWords[ti + ahead]) {
+          oi += ahead;
+          ti += ahead;
+          resynced = true;
+          break;
+        }
+      }
+      if (!resynced) {
+        oi++;
+        ti++;
+      }
+    }
+  }
+
+  return pairs;
+}
+
 async function submitFeedback(isGood) {
   const original = document.getElementById('paste-input').value.trim();
   const transformed = window._transformedText;
@@ -384,14 +485,7 @@ async function submitFeedback(isGood) {
   document.querySelectorAll('.feedback-btn').forEach(b => b.classList.remove('selected'));
   event.target.closest('.feedback-btn').classList.add('selected');
 
-  const originalWords = original.toLowerCase().split(/\s+/);
-  const transformedWords = transformed.toLowerCase().split(/\s+/);
-  const changed = [];
-  originalWords.forEach((word, i) => {
-    if (transformedWords[i] && word !== transformedWords[i]) {
-      changed.push({ original: word, replacement: transformedWords[i] });
-    }
-  });
+  const changed = extractChangedWords(original, transformed);
 
   try {
     await Promise.all(changed.slice(0, 10).map(pair =>

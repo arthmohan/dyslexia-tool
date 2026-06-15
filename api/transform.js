@@ -11,6 +11,38 @@ const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 const MAX_RETRIES = 2;
 
+// Parses a single CSV line, handling quoted fields with escaped quotes.
+function parseCSVLine(line) {
+  const fields = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"' && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        current += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        fields.push(current);
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+  }
+  fields.push(current);
+  return fields;
+}
+
 function loadFewShotExamples() {
   try {
     const csvPath = path.join(process.cwd(), 'public', 'feedback.csv');
@@ -21,12 +53,13 @@ function loadFewShotExamples() {
     const bad = [];
 
     lines.forEach(line => {
-      const [original, replacement, isGood, context] = line.split(',');
+      const fields = parseCSVLine(line);
+      const [original, replacement, isGood] = fields;
       if (!original || !replacement) return;
       if (isGood === 'true') {
         good.push(`- "${original.trim()}" -> "${replacement.trim()}"`);
       } else {
-        bad.push(`- "${original.trim()}" -> "${replacement.trim()}" (WRONG — do not do this)`);
+        bad.push(`- "${original.trim()}" -> "${replacement.trim()}" (WRONG)`);
       }
     });
 

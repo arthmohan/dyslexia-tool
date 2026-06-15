@@ -571,13 +571,13 @@ footer {
 @media print {
   header, footer, #section-input, #section-profile,
   #section-process, .output-actions, .score-badge,
-  .settings-toggle, .settings-panel, .settings-overlay { display: none !important; }
+  .settings-toggle, .settings-panel, .settings-overlay,
+  .feedback-row { display: none !important; }
   .card { border: none; box-shadow: none; padding: 0; }
   .output-box {
     border: none;
     padding: 0;
     font-size: 16px;
-    white-space: pre-wrap;
   }
   body { background: white !important; }
 }
