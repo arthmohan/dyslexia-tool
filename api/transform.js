@@ -136,125 +136,122 @@ async function requestGroq(prompt) {
   throw error;
 }
 
-// ── Profile definitions ──
-// Each profile has:
-//   target:     what to look for
-//   examples:   hardcoded examples showing what TO replace and what to LEAVE ALONE
-//   useCsvExamples: whether to include feedback.csv examples
+// ── Prompt builders per profile ──
+// Each is deliberately short and mechanical. No long instructions, no "leave
+// unchanged" examples. Just: criteria, a few replacement examples, and "leave
+// everything else alone."
 
-const profileConfigs = {
-  all: {
-    target: 'visually confusing letter patterns (b/d, p/q, l/i, ll/li, n/u), visually complex words, and words longer than 6-8 characters',
-    useCsvExamples: true,
-    examples: ''
-  },
-  letters: {
-    target: 'words where confusing letter shapes (b/d, p/q, l/i, ll/li, n/u, i/j) are the main readability barrier',
-    useCsvExamples: false,
-    examples: `
-EXAMPLES FOR THIS PROFILE:
-Replace (letter confusion is the core issue):
-- "difficult" -> "hard" (d/i pattern makes it hard to track)
-- "building" -> "making" (b/d/i/l pattern)
-- "display" -> "show" (d/p/l/i cluster)
-- "possible" -> "doable" or leave unchanged (p/b pattern, but only replace if context allows)
+function buildLettersPrompt(text, chunkNote) {
+  return `You are a dyslexia accessibility tool. Your ONLY job: find words that contain visually confusing letter combinations and replace them with easier words.
 
-Leave unchanged (these words are long or complex, but NOT letter-confusion problems):
-- "approximately" -> leave it (no confusing letter pattern)
-- "fundamental" -> leave it (length is not your concern)
-- "constellations" -> leave it (length and complexity, not letter confusion)
-- "remarkable" -> leave it (no b/d/p/q/l/i issue)
-- "proliferation" -> leave it (length, not letter shapes)
+Confusing combinations: b/d, p/q, l/i, i/j, ll, li, il, dd, bb, pp, nn/uu, bd, db, pb, dp.
 
-If you are unsure whether a word qualifies as letter confusion, leave it unchanged.`
-  },
-  length: {
-    target: 'words longer than 7 characters, but ONLY when a shorter alternative preserves the exact meaning',
-    useCsvExamples: false,
-    examples: `
-EXAMPLES FOR THIS PROFILE:
-Replace (long word, shorter alternative exists):
-- "approximately" -> "about"
-- "accommodation" -> "place to stay"
-- "demonstrated" -> "shown"
-- "fundamental" -> "key"
+Scan every word. If it contains one or more of these combinations AND a good replacement exists, replace it. If it does not contain these combinations, leave it exactly as is.
 
-Leave unchanged (long but no good short alternative, or already short enough):
-- "bilateral" -> leave it (no common short synonym)
-- "difficult" -> leave it (only 9 chars and no shorter precise alternative in most contexts)
-- "display" -> leave it (7 chars, already short)
-- "brilliant" -> leave it (no shorter word that means the same thing)
+Examples:
+- "accommodation" -> "place to stay" (has cc, mm, d)
+- "difficult" -> "hard" (has d, i, ff)
+- "building" -> "making" (has b, d, i, l)
+- "display" -> "show" (has d, p, l, i)
+- "bilateral" -> "two-way" (has b, l, i)
+- "brilliant" -> "gifted" (has b, ll, i)
+- "constellations" -> "star groups" (has ll, i)
+- "proliferation" -> "rapid spread" (has p, l, i)
 
-Only replace if the shorter alternative is precise. Do not sacrifice meaning for brevity.`
-  },
-  complex: {
-    target: 'visually crowded words: double letters (ll, dd, pp, rr, tt, bb, ff, ss), dense vertical strokes, or irregular letter patterns that are hard to track on the page',
-    useCsvExamples: false,
-    examples: `
-EXAMPLES FOR THIS PROFILE:
-Replace (visually dense, hard to track):
-- "accommodation" -> "place to stay" (cc + mm double letters)
-- "address" -> "location" (dd + ss)
-- "difficult" -> "hard" (ff + irregular shape)
-- "brilliant" -> "gifted" (ll double letters)
+Keep reading level within one level of the original. Preserve meaning exactly. Never touch proper nouns, names, numbers, or acronyms. Do not add or remove content.
+${chunkNote}
+Return ONLY the transformed text, nothing else.
 
-Leave unchanged (long or has confusing letters, but NOT visually crowded):
-- "approximately" -> leave it (no double letters, visually clean)
-- "fundamental" -> leave it (visually regular shape)
-- "destabilisation" -> leave it (long but not visually dense)
-- "demonstrated" -> leave it (no doubled or crowded patterns)
-
-Only replace words whose visual SHAPE is the problem, not words that are just long.`
-  }
-};
-
-function buildPrompt(text, profile, chunkIndex, totalChunks) {
-  const config = profileConfigs[profile] || profileConfigs.all;
-
-  const chunkLabel = totalChunks > 1
-    ? `\nThis is chunk ${chunkIndex + 1} of ${totalChunks} from a larger document. Keep the same tone and formatting style.`
-    : '';
-
-  // Build few-shot section
-  let fewShotSection = '';
-  if (config.useCsvExamples) {
-    const { good, bad } = loadFewShotExamples();
-    if (good.length > 0 || bad.length > 0) {
-      fewShotSection = `
-REFERENCE EXAMPLES (for replacement quality guidance, not a list of words to always replace):
-${good.length > 0 ? 'Good:\n' + good.join('\n') : ''}
-${bad.length > 0 ? '\nBad (never do these):\n' + bad.join('\n') : ''}`;
-    }
-  }
-
-  return `You are a targeted accessibility tool for dyslexic readers. You make minimal, precise word replacements to improve readability.
-
-=== YOUR CONSTRAINT ===
-ONLY replace words that match this target: ${config.target}
-
-Everything else stays exactly as written. Do not simplify, shorten, or improve words outside this target. If a word does not clearly match the target category, leave it unchanged.
-=== END CONSTRAINT ===
-
-RULES:
-1. Assess reading level (1-10). Stay within one level of the original.
-2. Be MINIMAL. A good transformation changes 2-5 words in a paragraph, not half the sentence.
-3. Meaning must be exactly preserved. No precise replacement = leave the word.
-4. Be consistent: same word gets same replacement throughout.
-5. Never touch: proper nouns, names, places, acronyms, numbers, dates, scientific terms.
-6. Do not add, remove, or rearrange content. No new headings, bullets, or formatting.
-7. When in doubt, leave the word unchanged. Under-replacing is always better than over-replacing.
-${chunkLabel}
-${config.examples}
-${fewShotSection}
-
-Return ONLY the transformed text. No preamble, no notes, no code fences.
-
-Text to process:
+Text:
 ${text}`;
 }
 
+function buildLengthPrompt(text, chunkNote) {
+  return `You are a dyslexia accessibility tool. Your ONLY job: find words longer than 7 characters and replace them with shorter alternatives.
+
+Scan every word. If it has 8 or more characters AND a shorter word or phrase means the same thing, replace it. If the word is 7 characters or shorter, leave it. If no shorter alternative preserves the meaning, leave the long word too.
+
+Examples:
+- "accommodation" -> "place to stay"
+- "approximately" -> "about"
+- "demonstrated" -> "shown"
+- "fundamental" -> "key"
+- "constellations" -> "star groups"
+- "destabilisation" -> "breakdown"
+- "proliferation" -> "rapid spread"
+- "jurisdictions" -> "regions"
+
+Keep reading level within one level of the original. Preserve meaning exactly. Never touch proper nouns, names, numbers, or acronyms. Do not add or remove content.
+${chunkNote}
+Return ONLY the transformed text, nothing else.
+
+Text:
+${text}`;
+}
+
+function buildComplexPrompt(text, chunkNote) {
+  return `You are a dyslexia accessibility tool. Your ONLY job: find visually crowded words and replace them with visually cleaner alternatives.
+
+Visually crowded means: double letters (ll, dd, pp, rr, tt, bb, ff, ss, cc, mm, nn), dense clusters of tall/hanging letters (b, d, f, g, h, j, k, l, p, q, t, y close together), or letter shapes that blur into each other.
+
+Scan every word. If it looks visually dense or crowded AND a cleaner-looking replacement exists, replace it. If the word has a clean visual shape, leave it regardless of length.
+
+Examples:
+- "accommodation" -> "place to stay" (cc, mm, dd)
+- "address" -> "location" (dd, ss)
+- "difficult" -> "hard" (ff, mixed shapes)
+- "brilliant" -> "gifted" (ll)
+- "destabilisation" -> "breakdown" (mixed tall/hanging letters clustered)
+- "constellations" -> "star groups" (ll, mixed shapes)
+
+Keep reading level within one level of the original. Preserve meaning exactly. Never touch proper nouns, names, numbers, or acronyms. Do not add or remove content.
+${chunkNote}
+Return ONLY the transformed text, nothing else.
+
+Text:
+${text}`;
+}
+
+function buildAllPrompt(text, chunkNote) {
+  const { good, bad } = loadFewShotExamples();
+
+  let examplesSection = '';
+  if (good.length > 0 || bad.length > 0) {
+    examplesSection = `\nReference replacements:
+${good.length > 0 ? good.join('\n') : ''}
+${bad.length > 0 ? '\nKnown bad replacements (never do these):\n' + bad.join('\n') : ''}`;
+  }
+
+  return `You are a dyslexia accessibility tool. Replace visually difficult words with easier alternatives.
+
+Target these categories:
+1. Words with confusing letter patterns (b/d, p/q, l/i, ll, dd, bb, pp)
+2. Words longer than 7 characters where a shorter alternative exists
+3. Visually crowded words with double letters or dense letter shapes
+
+Be selective. A typical paragraph needs 3-6 replacements, not a full rewrite. Only replace a word when you have a clearly better alternative. Keep reading level within one level of the original. Preserve meaning exactly. Never touch proper nouns, names, numbers, or acronyms. Do not add or remove content.
+${examplesSection}
+${chunkNote}
+Return ONLY the transformed text, nothing else.
+
+Text:
+${text}`;
+}
+
+const promptBuilders = {
+  letters: buildLettersPrompt,
+  length: buildLengthPrompt,
+  complex: buildComplexPrompt,
+  all: buildAllPrompt
+};
+
 async function transformChunk(chunk, profile, chunkIndex, totalChunks) {
-  const prompt = buildPrompt(chunk, profile, chunkIndex, totalChunks);
+  const chunkNote = totalChunks > 1
+    ? `\nThis is chunk ${chunkIndex + 1} of ${totalChunks}. Keep consistent tone and style.`
+    : '';
+
+  const builder = promptBuilders[profile] || promptBuilders.all;
+  const prompt = builder(chunk, chunkNote);
   const data = await requestGroq(prompt);
   const transformed = cleanupTransformedText(data.choices?.[0]?.message?.content || '');
 
@@ -281,7 +278,7 @@ export default async function handler(req, res) {
     });
   }
 
-  const validProfile = profileConfigs[profile] ? profile : 'all';
+  const validProfile = promptBuilders[profile] ? profile : 'all';
 
   try {
     const chunks = splitIntoChunks(normalizedText);
