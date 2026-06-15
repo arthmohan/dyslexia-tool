@@ -11,7 +11,6 @@ const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 const MAX_RETRIES = 2;
 
-// Parses a single CSV line, handling quoted fields with escaped quotes.
 function parseCSVLine(line) {
   const fields = [];
   let current = '';
@@ -43,19 +42,7 @@ function parseCSVLine(line) {
   return fields;
 }
 
-// Check if a word contains visually confusing letter patterns (b/d, p/q, l/i, etc.)
-function hasLetterConfusion(word) {
-  const w = word.toLowerCase();
-  return /[bdpq]/.test(w) || /l[il]|il|li/.test(w) || /[nu]{2}/.test(w) || /[ij]/.test(w);
-}
-
-// Check if a word has visual complexity (double letters, mixed ascenders/descenders)
-function isVisuallyComplex(word) {
-  const w = word.toLowerCase();
-  return /(.)\1/.test(w) || /[bdfghjklpqty]{3,}/.test(w);
-}
-
-function loadFewShotExamples(profile) {
+function loadFewShotExamples() {
   try {
     const csvPath = path.join(process.cwd(), 'public', 'feedback.csv');
     const content = fs.readFileSync(csvPath, 'utf-8');
@@ -71,17 +58,6 @@ function loadFewShotExamples(profile) {
 
       const trimOrig = original.trim();
       const trimRepl = replacement.trim();
-
-      // Filter examples to match the active profile so the model does not
-      // treat cross-category examples as blanket permission.
-      if (profile === 'letters') {
-        if (!hasLetterConfusion(trimOrig)) return;
-      } else if (profile === 'length') {
-        if (trimOrig.length < 7) return;
-      } else if (profile === 'complex') {
-        if (!isVisuallyComplex(trimOrig)) return;
-      }
-      // 'all' profile: show everything
 
       if (isGood === 'true') {
         good.push(`- "${trimOrig}" -> "${trimRepl}"`);
@@ -160,75 +136,125 @@ async function requestGroq(prompt) {
   throw error;
 }
 
+// ── Profile definitions ──
+// Each profile has:
+//   target:     what to look for
+//   examples:   hardcoded examples showing what TO replace and what to LEAVE ALONE
+//   useCsvExamples: whether to include feedback.csv examples
+
 const profileConfigs = {
   all: {
     target: 'visually confusing letter patterns (b/d, p/q, l/i, ll/li, n/u), visually complex words, and words longer than 6-8 characters',
-    constraint: `You may replace words from ANY of these categories: confusing letter patterns, long words, and visually complex words. But still be selective. Only replace a word when a clearly better alternative exists. Most sentences should have 0-3 replacements, not wholesale rewriting.`,
-    exclusions: ''
+    useCsvExamples: true,
+    examples: ''
   },
   letters: {
-    target: 'words containing visually confusing letter patterns: b/d, p/q, l/i, ll/li, n/u, i/j',
-    constraint: `You may ONLY replace words where confusing letter shapes (b/d, p/q, l/i, ll/li, n/u, i/j) are the PRIMARY readability barrier. The letter pattern must be a significant part of why the word is hard to read, not just incidentally present.`,
-    exclusions: `OFF LIMITS for this profile:
-- Do NOT replace a word just because it is long. "approximately" is long but has no confusing letter pattern. Leave it.
-- Do NOT replace a word just because it looks complex or has double letters. "accommodation" has double letters but its main issue is letter confusion (d). Only replace it if the b/d/p/q/l/i pattern is the problem.
-- If a word's only issue is length or visual density, leave it unchanged.`
+    target: 'words where confusing letter shapes (b/d, p/q, l/i, ll/li, n/u, i/j) are the main readability barrier',
+    useCsvExamples: false,
+    examples: `
+EXAMPLES FOR THIS PROFILE:
+Replace (letter confusion is the core issue):
+- "difficult" -> "hard" (d/i pattern makes it hard to track)
+- "building" -> "making" (b/d/i/l pattern)
+- "display" -> "show" (d/p/l/i cluster)
+- "possible" -> "doable" or leave unchanged (p/b pattern, but only replace if context allows)
+
+Leave unchanged (these words are long or complex, but NOT letter-confusion problems):
+- "approximately" -> leave it (no confusing letter pattern)
+- "fundamental" -> leave it (length is not your concern)
+- "constellations" -> leave it (length and complexity, not letter confusion)
+- "remarkable" -> leave it (no b/d/p/q/l/i issue)
+- "proliferation" -> leave it (length, not letter shapes)
+
+If you are unsure whether a word qualifies as letter confusion, leave it unchanged.`
   },
   length: {
-    target: 'words longer than 7 characters where a shorter, precise alternative exists',
-    constraint: `You may ONLY replace words that are longer than 7 characters AND where a shorter word or phrase preserves the exact same meaning. The replacement must be noticeably shorter or simpler to scan.`,
-    exclusions: `OFF LIMITS for this profile:
-- Do NOT replace short words (7 characters or fewer), no matter how confusing their letters look.
-- Do NOT replace a long word if no shorter alternative preserves its meaning precisely.
-- "bilateral" is 9 characters, but if no short synonym fits the context, leave it.`
+    target: 'words longer than 7 characters, but ONLY when a shorter alternative preserves the exact meaning',
+    useCsvExamples: false,
+    examples: `
+EXAMPLES FOR THIS PROFILE:
+Replace (long word, shorter alternative exists):
+- "approximately" -> "about"
+- "accommodation" -> "place to stay"
+- "demonstrated" -> "shown"
+- "fundamental" -> "key"
+
+Leave unchanged (long but no good short alternative, or already short enough):
+- "bilateral" -> leave it (no common short synonym)
+- "difficult" -> leave it (only 9 chars and no shorter precise alternative in most contexts)
+- "display" -> leave it (7 chars, already short)
+- "brilliant" -> leave it (no shorter word that means the same thing)
+
+Only replace if the shorter alternative is precise. Do not sacrifice meaning for brevity.`
   },
   complex: {
-    target: 'visually crowded words with double letters (ll, dd, pp, rr, tt, bb, ff, ss), dense ascender/descender clusters, or irregular letter shapes that are hard to track visually',
-    constraint: `You may ONLY replace words whose visual shape is the readability barrier: double letters, dense vertical strokes, or crowded ascender/descender patterns. The word must genuinely look hard to track on the page.`,
-    exclusions: `OFF LIMITS for this profile:
-- Do NOT replace a word just because it is long. Length alone is not visual complexity.
-- Do NOT replace a word because of b/d or p/q confusion. That belongs to a different profile.
-- "fundamental" is long but visually clean. Leave it. "accommodation" has dd and mm, so it qualifies.`
+    target: 'visually crowded words: double letters (ll, dd, pp, rr, tt, bb, ff, ss), dense vertical strokes, or irregular letter patterns that are hard to track on the page',
+    useCsvExamples: false,
+    examples: `
+EXAMPLES FOR THIS PROFILE:
+Replace (visually dense, hard to track):
+- "accommodation" -> "place to stay" (cc + mm double letters)
+- "address" -> "location" (dd + ss)
+- "difficult" -> "hard" (ff + irregular shape)
+- "brilliant" -> "gifted" (ll double letters)
+
+Leave unchanged (long or has confusing letters, but NOT visually crowded):
+- "approximately" -> leave it (no double letters, visually clean)
+- "fundamental" -> leave it (visually regular shape)
+- "destabilisation" -> leave it (long but not visually dense)
+- "demonstrated" -> leave it (no doubled or crowded patterns)
+
+Only replace words whose visual SHAPE is the problem, not words that are just long.`
   }
 };
 
-function buildPrompt(text, profile, fewShotSection, chunkIndex, totalChunks) {
+function buildPrompt(text, profile, chunkIndex, totalChunks) {
   const config = profileConfigs[profile] || profileConfigs.all;
 
   const chunkLabel = totalChunks > 1
-    ? `This is chunk ${chunkIndex + 1} of ${totalChunks} from a larger document. Keep the same tone and formatting style as the input chunk.`
+    ? `\nThis is chunk ${chunkIndex + 1} of ${totalChunks} from a larger document. Keep the same tone and formatting style.`
     : '';
 
-  return `You are a targeted accessibility tool for dyslexic readers.
+  // Build few-shot section
+  let fewShotSection = '';
+  if (config.useCsvExamples) {
+    const { good, bad } = loadFewShotExamples();
+    if (good.length > 0 || bad.length > 0) {
+      fewShotSection = `
+REFERENCE EXAMPLES (for replacement quality guidance, not a list of words to always replace):
+${good.length > 0 ? 'Good:\n' + good.join('\n') : ''}
+${bad.length > 0 ? '\nBad (never do these):\n' + bad.join('\n') : ''}`;
+    }
+  }
 
-YOUR SINGLE JOB: Find and replace ONLY the specific types of visually difficult words described in the ACTIVE PROFILE below. Leave all other words exactly as they are, even if you know a simpler alternative.
+  return `You are a targeted accessibility tool for dyslexic readers. You make minimal, precise word replacements to improve readability.
 
-=== ACTIVE PROFILE ===
-Target: ${config.target}
-${config.constraint}
-${config.exclusions ? '\n' + config.exclusions : ''}
-=== END PROFILE ===
+=== YOUR CONSTRAINT ===
+ONLY replace words that match this target: ${config.target}
+
+Everything else stays exactly as written. Do not simplify, shorten, or improve words outside this target. If a word does not clearly match the target category, leave it unchanged.
+=== END CONSTRAINT ===
 
 RULES:
-1. Assess reading level (1-10). Keep output within one level of the original. A level 9 text stays at 8, not 5.
-2. Replace as few words as possible. Most sentences need 0-2 replacements. If a sentence has no target words, return it unchanged.
-3. Phrases are often better than single-word swaps ("accommodation" -> "place to stay").
-4. Meaning must be exactly preserved. If no precise replacement exists, leave the word.
-5. Be consistent: if you replace a word, replace it every time it appears.
-6. Never replace: proper nouns, names, places, acronyms, numbers, dates, scientific terms, URLs.
-7. Do not add, remove, or rearrange content. Do not add headings, bullets, or formatting that was not in the original.
-8. Do not rewrite passages. Only swap individual words or short phrases.
-${chunkLabel ? '\n' + chunkLabel : ''}
+1. Assess reading level (1-10). Stay within one level of the original.
+2. Be MINIMAL. A good transformation changes 2-5 words in a paragraph, not half the sentence.
+3. Meaning must be exactly preserved. No precise replacement = leave the word.
+4. Be consistent: same word gets same replacement throughout.
+5. Never touch: proper nouns, names, places, acronyms, numbers, dates, scientific terms.
+6. Do not add, remove, or rearrange content. No new headings, bullets, or formatting.
+7. When in doubt, leave the word unchanged. Under-replacing is always better than over-replacing.
+${chunkLabel}
+${config.examples}
 ${fewShotSection}
 
-Return ONLY the transformed text. No preamble, no notes, no code fences, no explanation.
+Return ONLY the transformed text. No preamble, no notes, no code fences.
 
 Text to process:
 ${text}`;
 }
 
-async function transformChunk(chunk, profile, fewShotSection, chunkIndex, totalChunks) {
-  const prompt = buildPrompt(chunk, profile, fewShotSection, chunkIndex, totalChunks);
+async function transformChunk(chunk, profile, chunkIndex, totalChunks) {
+  const prompt = buildPrompt(chunk, profile, chunkIndex, totalChunks);
   const data = await requestGroq(prompt);
   const transformed = cleanupTransformedText(data.choices?.[0]?.message?.content || '');
 
@@ -256,22 +282,13 @@ export default async function handler(req, res) {
   }
 
   const validProfile = profileConfigs[profile] ? profile : 'all';
-  const { good, bad } = loadFewShotExamples(validProfile);
-
-  let fewShotSection = '';
-  if (good.length > 0 || bad.length > 0) {
-    fewShotSection = `
-REFERENCE EXAMPLES (for replacement quality, not blanket permission):
-${good.length > 0 ? 'Good:\n' + good.join('\n') : ''}
-${bad.length > 0 ? 'Bad (never do these):\n' + bad.join('\n') : ''}`;
-  }
 
   try {
     const chunks = splitIntoChunks(normalizedText);
     const transformedChunks = [];
 
     for (let i = 0; i < chunks.length; i++) {
-      const transformedChunk = await transformChunk(chunks[i], validProfile, fewShotSection, i, chunks.length);
+      const transformedChunk = await transformChunk(chunks[i], validProfile, i, chunks.length);
       transformedChunks.push(transformedChunk);
     }
 
