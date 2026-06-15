@@ -66,12 +66,16 @@ document.addEventListener('DOMContentLoaded', () => {
 // ── File Handling ────────────────────────────────────────────────────────────
 
 let extractedText = '';
+let currentUploadName = '';
+const MAX_INPUT_CHARS = 24000;
 
 async function handleFile(file) {
   if (!file) return;
+  currentUploadName = file.name;
   const fileNameEl = document.getElementById('file-name');
   fileNameEl.textContent = file.name;
   const ext = file.name.split('.').pop().toLowerCase();
+  setUploadStatus('Reading file...');
 
   try {
     if (ext === 'txt') {
@@ -81,13 +85,16 @@ async function handleFile(file) {
     } else if (ext === 'pdf') {
       extractedText = await extractPdf(file);
     } else {
+      clearUploadStatus();
       alert('Unsupported file type. Please upload a PDF, .docx, or .txt file.');
       return;
     }
     document.getElementById('paste-input').value = extractedText;
     document.getElementById('char-count').textContent = extractedText.length;
     window._inputSource = 'file';
+    clearUploadStatus();
   } catch (err) {
+    clearUploadStatus();
     alert('Could not read this file. ' + err.message);
   }
 }
@@ -102,15 +109,80 @@ async function extractPdf(file) {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   let text = '';
+
   for (let i = 1; i <= pdf.numPages; i++) {
+    setUploadStatus(`Reading PDF page ${i} of ${pdf.numPages}...`);
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
     text += content.items.map(item => item.str).join(' ') + '\n';
   }
-  if (!text.trim()) {
-    throw new Error('This PDF appears to be scanned or image-based. Please use a text-based PDF or paste your text directly.');
+
+  if (isTextExtractionUsable(text, pdf.numPages)) {
+    return text;
   }
-  return text;
+
+  setUploadStatus('Scanned PDF detected. Running OCR...');
+  return extractPdfWithOcr(pdf);
+}
+
+function isTextExtractionUsable(text, pageCount) {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (!normalized) return false;
+
+  const minChars = Math.max(40, pageCount * 25);
+  const letterCount = (normalized.match(/[A-Za-z]/g) || []).length;
+  return normalized.length >= minChars && letterCount >= Math.max(20, pageCount * 12);
+}
+
+async function extractPdfWithOcr(pdf) {
+  if (!window.Tesseract) {
+    throw new Error('OCR could not start because the Tesseract library did not load.');
+  }
+
+  let combinedText = '';
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    setUploadStatus(`Running OCR on page ${i} of ${pdf.numPages}...`);
+
+    const viewport = page.getViewport({ scale: 2 });
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+
+    await page.render({ canvasContext: context, viewport }).promise;
+
+    const {
+      data: { text }
+    } = await Tesseract.recognize(canvas, 'eng', {
+      logger: ({ status, progress }) => {
+        if (status === 'recognizing text') {
+          const percent = Math.round(progress * 100);
+          setUploadStatus(`Running OCR on page ${i} of ${pdf.numPages}... ${percent}%`);
+        }
+      }
+    });
+
+    combinedText += `${text.trim()}\n`;
+  }
+
+  const normalized = combinedText.trim();
+  if (!normalized) {
+    throw new Error('OCR could not detect readable text in this PDF.');
+  }
+
+  return normalized;
+}
+
+function setUploadStatus(message) {
+  const fileNameEl = document.getElementById('file-name');
+  fileNameEl.textContent = message;
+}
+
+function clearUploadStatus() {
+  const fileNameEl = document.getElementById('file-name');
+  fileNameEl.textContent = currentUploadName;
 }
 
 // ── Transform ────────────────────────────────────────────────────────────────
@@ -119,6 +191,10 @@ async function runTransform() {
   const text = document.getElementById('paste-input').value.trim();
   if (!text) {
     alert('Please upload a file or paste some text first.');
+    return;
+  }
+  if (text.length > MAX_INPUT_CHARS) {
+    alert(`This document is too large right now. Please keep it under ${MAX_INPUT_CHARS.toLocaleString()} characters.`);
     return;
   }
 
@@ -133,14 +209,27 @@ async function runTransform() {
   document.getElementById('section-output').style.display = 'none';
 
   try {
-    progressLabel.textContent = 'Sending to Groq...';
+    progressLabel.textContent = 'Processing your text...';
     const transformRes = await fetch('/api/transform', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, profile, source })
     });
 
-    if (!transformRes.ok) throw new Error('Transform failed. Please try again.');
+    if (!transformRes.ok) {
+      let errorMessage = 'Transform failed. Please try again.';
+
+      try {
+        const errorData = await transformRes.json();
+        if (errorData?.error) {
+          errorMessage = errorData.error;
+        }
+      } catch (parseErr) {
+        // Keep the fallback message if the response body is not JSON.
+      }
+
+      throw new Error(errorMessage);
+    }
     const { transformed } = await transformRes.json();
 
     progressLabel.textContent = 'Calculating similarity score...';
@@ -174,7 +263,8 @@ function showOutput(text, score) {
   const scoreBadge = document.getElementById('score-badge');
   const scoreValue = document.getElementById('score-value');
 
-  outputBox.innerHTML = marked.parse(text);
+  const parsed = marked.parse(text || '');
+  outputBox.innerHTML = parsed || `<p>${escapeHtml(text)}</p>`;
   window._transformedText = text;
 
   section.style.display = 'block';
@@ -191,6 +281,15 @@ function showOutput(text, score) {
   }
 
   section.scrollIntoView({ behavior: 'smooth' });
+}
+
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 // ── PDF Download ─────────────────────────────────────────────────────────────
