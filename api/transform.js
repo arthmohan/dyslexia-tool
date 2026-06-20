@@ -136,81 +136,20 @@ async function requestGroq(prompt) {
   throw error;
 }
 
-// ── Prompt builders per profile ──
-// Each is deliberately short and mechanical. No long instructions, no "leave
-// unchanged" examples. Just: criteria, a few replacement examples, and "leave
-// everything else alone."
+// ── Shared quality rules ──
+// Every profile gets these. They enforce the "1-2 levels down, same register" behavior.
+const QUALITY_RULES = `
+QUALITY RULES:
+- Reduce reading level by 1-2 levels, no more. Level 9 text becomes level 7-8, not level 4.
+- The output must sound like the same type of writing. Academic stays academic. Professional stays professional. Casual stays casual.
+- Every replacement must make the sentence easier to read, not harder or more awkward.
+- If a replacement changes the register (e.g. "partnerships" -> "tie-ups" in formal text), skip it or find a better fit (e.g. "partnerships" -> "alliances").
+- Phrase replacements ("place to stay") are often better than single-word swaps ("location") because they read more naturally.
+- Never touch proper nouns, names, numbers, acronyms, dates, or scientific terms.
+- Preserve all formatting: headings, bullets, paragraph breaks, emphasis.
+- Do not add or remove content.`;
 
-function buildLettersPrompt(text, chunkNote) {
-  return `You are a dyslexia accessibility tool. Your ONLY job: find words that contain visually confusing letter combinations and replace them with easier words.
-
-Confusing combinations: b/d, p/q, l/i, i/j, ll, li, il, dd, bb, pp, nn/uu, bd, db, pb, dp.
-
-Scan every word. If it contains one or more of these combinations AND a good replacement exists, replace it. If it does not contain these combinations, leave it exactly as is.
-
-Examples:
-- "accommodation" -> "place to stay" (has cc, mm, d)
-- "difficult" -> "hard" (has d, i, ff)
-- "building" -> "making" (has b, d, i, l)
-- "display" -> "show" (has d, p, l, i)
-- "bilateral" -> "two-way" (has b, l, i)
-- "brilliant" -> "gifted" (has b, ll, i)
-- "constellations" -> "star groups" (has ll, i)
-- "proliferation" -> "rapid spread" (has p, l, i)
-
-Keep reading level within one level of the original. Preserve meaning exactly. Never touch proper nouns, names, numbers, or acronyms. Do not add or remove content.
-${chunkNote}
-Return ONLY the transformed text, nothing else.
-
-Text:
-${text}`;
-}
-
-function buildLengthPrompt(text, chunkNote) {
-  return `You are a dyslexia accessibility tool. Your ONLY job: find words longer than 7 characters and replace them with shorter alternatives.
-
-Scan every word. If it has 8 or more characters AND a shorter word or phrase means the same thing, replace it. If the word is 7 characters or shorter, leave it. If no shorter alternative preserves the meaning, leave the long word too.
-
-Examples:
-- "accommodation" -> "place to stay"
-- "approximately" -> "about"
-- "demonstrated" -> "shown"
-- "fundamental" -> "key"
-- "constellations" -> "star groups"
-- "destabilisation" -> "breakdown"
-- "proliferation" -> "rapid spread"
-- "jurisdictions" -> "regions"
-
-Keep reading level within one level of the original. Preserve meaning exactly. Never touch proper nouns, names, numbers, or acronyms. Do not add or remove content.
-${chunkNote}
-Return ONLY the transformed text, nothing else.
-
-Text:
-${text}`;
-}
-
-function buildComplexPrompt(text, chunkNote) {
-  return `You are a dyslexia accessibility tool. Your ONLY job: find visually crowded words and replace them with visually cleaner alternatives.
-
-Visually crowded means: double letters (ll, dd, pp, rr, tt, bb, ff, ss, cc, mm, nn), dense clusters of tall/hanging letters (b, d, f, g, h, j, k, l, p, q, t, y close together), or letter shapes that blur into each other.
-
-Scan every word. If it looks visually dense or crowded AND a cleaner-looking replacement exists, replace it. If the word has a clean visual shape, leave it regardless of length.
-
-Examples:
-- "accommodation" -> "place to stay" (cc, mm, dd)
-- "address" -> "location" (dd, ss)
-- "difficult" -> "hard" (ff, mixed shapes)
-- "brilliant" -> "gifted" (ll)
-- "destabilisation" -> "breakdown" (mixed tall/hanging letters clustered)
-- "constellations" -> "star groups" (ll, mixed shapes)
-
-Keep reading level within one level of the original. Preserve meaning exactly. Never touch proper nouns, names, numbers, or acronyms. Do not add or remove content.
-${chunkNote}
-Return ONLY the transformed text, nothing else.
-
-Text:
-${text}`;
-}
+// ── Per-profile prompts ──
 
 function buildAllPrompt(text, chunkNote) {
   const { good, bad } = loadFewShotExamples();
@@ -219,18 +158,89 @@ function buildAllPrompt(text, chunkNote) {
   if (good.length > 0 || bad.length > 0) {
     examplesSection = `\nReference replacements:
 ${good.length > 0 ? good.join('\n') : ''}
-${bad.length > 0 ? '\nKnown bad replacements (never do these):\n' + bad.join('\n') : ''}`;
+${bad.length > 0 ? '\nKnown bad (never do these):\n' + bad.join('\n') : ''}`;
   }
 
-  return `You are a dyslexia accessibility tool. Replace visually difficult words with easier alternatives.
+  return `You are a dyslexia accessibility tool. Make text easier for dyslexic readers by replacing visually difficult words with clearer alternatives.
 
-Target these categories:
-1. Words with confusing letter patterns (b/d, p/q, l/i, ll, dd, bb, pp)
-2. Words longer than 7 characters where a shorter alternative exists
-3. Visually crowded words with double letters or dense letter shapes
+Target words that are hard to read because of:
+- Confusing letter patterns (b/d, p/q, l/i, ll, dd, bb, pp)
+- Excessive length (8+ characters where a shorter option exists)
+- Visually crowded shapes (double letters, dense ascender/descender clusters)
 
-Be selective. A typical paragraph needs 3-6 replacements, not a full rewrite. Only replace a word when you have a clearly better alternative. Keep reading level within one level of the original. Preserve meaning exactly. Never touch proper nouns, names, numbers, or acronyms. Do not add or remove content.
+Be selective. Not every complex word needs replacing. Focus on the words that would cause the most difficulty for a dyslexic reader, and leave the rest. A typical paragraph of 3-4 sentences needs roughly 3-8 replacements.
+${QUALITY_RULES}
 ${examplesSection}
+${chunkNote}
+Return ONLY the transformed text, nothing else.
+
+Text:
+${text}`;
+}
+
+function buildLettersPrompt(text, chunkNote) {
+  return `You are a dyslexia accessibility tool. Make text easier for dyslexic readers by replacing words that contain visually confusing letter combinations.
+
+Target letters: b/d, p/q, l/i, i/j, and clusters of these (ll, dd, bb, pp, bd, bl, dl, pb, dp, il, li).
+
+Scan each word. If it contains these confusing letter combinations and a clearer word exists, replace it. If the word does not contain these patterns, leave it exactly as written, even if it is long or complex.
+
+Examples:
+- "accommodation" -> "place to stay" (has d, cc, mm)
+- "difficult" -> "hard" (has d, i, ff)
+- "building" -> "making" (has b, d, i, l)
+- "bilateral" -> "two-sided" (has b, l, i)
+- "brilliant" -> "gifted" (has b, ll, i)
+- "display" -> "show" (has d, p, l, i)
+- "proliferation" -> "rapid growth" (has p, l, i)
+- "constellations" -> "star patterns" (has ll, i)
+${QUALITY_RULES}
+${chunkNote}
+Return ONLY the transformed text, nothing else.
+
+Text:
+${text}`;
+}
+
+function buildLengthPrompt(text, chunkNote) {
+  return `You are a dyslexia accessibility tool. Make text easier for dyslexic readers by replacing long words with shorter alternatives.
+
+Target: words with 8 or more characters. If a shorter word or phrase preserves the same meaning, replace it. If the word is 7 characters or fewer, leave it. If no shorter alternative fits precisely, leave the long word too.
+
+Examples:
+- "accommodation" -> "place to stay"
+- "approximately" -> "roughly" or "about"
+- "demonstrated" -> "shown"
+- "fundamental" -> "core" or "key"
+- "constellations" -> "star patterns"
+- "destabilisation" -> "breakdown"
+- "proliferation" -> "rapid growth"
+- "jurisdictions" -> "regions"
+- "incredible" -> "amazing"
+${QUALITY_RULES}
+${chunkNote}
+Return ONLY the transformed text, nothing else.
+
+Text:
+${text}`;
+}
+
+function buildComplexPrompt(text, chunkNote) {
+  return `You are a dyslexia accessibility tool. Make text easier for dyslexic readers by replacing visually crowded or dense-looking words.
+
+Target: words with double letters (ll, dd, pp, rr, tt, bb, ff, ss, cc, mm, nn), dense clusters of tall/hanging letters (b, d, f, g, h, j, k, l, p, q, t, y packed together), or shapes that blur into each other when reading quickly.
+
+Scan each word. If it looks visually dense and a cleaner-looking replacement exists, replace it. If the word has a clean visual shape, leave it regardless of length.
+
+Examples:
+- "accommodation" -> "place to stay" (cc, mm)
+- "address" -> "location" (dd, ss)
+- "difficult" -> "hard" (ff, dense shapes)
+- "brilliant" -> "gifted" (ll)
+- "destabilisation" -> "breakdown" (dense tall/hanging cluster)
+- "constellations" -> "star patterns" (ll, dense shapes)
+- "proliferation" -> "rapid growth" (dense cluster)
+${QUALITY_RULES}
 ${chunkNote}
 Return ONLY the transformed text, nothing else.
 
