@@ -168,7 +168,7 @@ Target words that are hard to read because of:
 - Excessive length (8+ characters where a shorter option exists)
 - Visually crowded shapes (double letters, dense ascender/descender clusters)
 
-Be selective. Not every complex word needs replacing. Focus on the words that would cause the most difficulty for a dyslexic reader, and leave the rest. A typical paragraph of 3-4 sentences needs roughly 3-8 replacements.
+Replace every word that matches the target criteria above, as long as a good replacement exists. Do not skip matching words to keep changes low. The goal is to make the text genuinely easier for a dyslexic reader, not to make minimal edits.
 ${QUALITY_RULES}
 ${examplesSection}
 ${chunkNote}
