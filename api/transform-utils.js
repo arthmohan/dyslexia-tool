@@ -1,5 +1,8 @@
 export const MAX_INPUT_CHARS = 24000;
 export const TARGET_CHUNK_CHARS = 3500;
+// Phrase replacements can grow text slightly (e.g. "accommodation" -> "place to stay").
+// Anything beyond this ratio means the model added content that wasn't in the original.
+const MAX_GROWTH_RATIO = 1.20;
 
 export function normalizeInputText(text) {
   return String(text || '')
@@ -123,4 +126,31 @@ export function cleanupTransformedText(text) {
     .trim();
 
   return cleaned;
+}
+
+// Checks whether the model added content that wasn't in the original.
+// Compares word counts: phrase replacements can grow text by ~15-20%,
+// anything beyond that is hallucinated content. When caught, trims
+// the output to the original's approximate length at a sentence boundary.
+export function guardAgainstHallucination(original, transformed) {
+  const origWordCount = original.split(/\s+/).filter(Boolean).length;
+  const transWordCount = transformed.split(/\s+/).filter(Boolean).length;
+
+  if (transWordCount <= Math.ceil(origWordCount * MAX_GROWTH_RATIO)) {
+    return transformed;
+  }
+
+  console.log(`Hallucination guard: output grew from ${origWordCount} to ${transWordCount} words. Trimming.`);
+
+  const words = transformed.split(/\s+/).filter(Boolean);
+  const targetLength = Math.ceil(origWordCount * 1.10);
+  const trimmed = words.slice(0, targetLength).join(' ');
+
+  // Try to cut at the last sentence boundary so we don't end mid-thought.
+  const lastSentenceEnd = trimmed.search(/[.!?][^.!?]*$/);
+  if (lastSentenceEnd > trimmed.length * 0.75) {
+    return trimmed.slice(0, lastSentenceEnd + 1);
+  }
+
+  return trimmed;
 }

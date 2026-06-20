@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import {
   cleanupTransformedText,
+  guardAgainstHallucination,
   MAX_INPUT_CHARS,
   normalizeInputText,
   splitIntoChunks
@@ -159,7 +160,7 @@ QUALITY RULES:
 - Phrase replacements ("place to stay", "make worse") are often better than single-word swaps.
 - Never touch proper nouns, names, numbers, acronyms, dates, or scientific terms.
 - Preserve all formatting: headings, bullets, paragraph breaks, emphasis.
-- Do not add or remove content.`;
+- CRITICAL: Do not add or remove content. Never invent new phrases, clauses, or sentences. Only replace existing words.`;
 
 // ── Per-profile prompts ──
 
@@ -311,7 +312,10 @@ export default async function handler(req, res) {
       transformedChunks.push(transformedChunk);
     }
 
-    const transformed = cleanupTransformedText(transformedChunks.join('\n\n'));
+    const transformed = guardAgainstHallucination(
+      normalizedText,
+      cleanupTransformedText(transformedChunks.join('\n\n'))
+    );
 
     res.status(200).json({ transformed });
   } catch (err) {

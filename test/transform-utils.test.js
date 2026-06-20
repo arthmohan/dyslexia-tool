@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   cleanupTransformedText,
+  guardAgainstHallucination,
   normalizeInputText,
   splitIntoChunks
 } from '../api/transform-utils.js';
@@ -186,4 +187,21 @@ test('extractChangedWords handles totally different texts without crashing', () 
   const pairs = extractChangedWords(original, transformed);
   // Should return something (maybe empty, maybe partial) but definitely no crash
   assert.ok(Array.isArray(pairs));
+});
+
+// ── Hallucination guard tests ──
+
+test('guardAgainstHallucination passes through normal output', () => {
+  const original = 'The accommodation was approximately fundamental to the operation.';
+  const transformed = 'The place to stay was roughly key to the operation.';
+  const result = guardAgainstHallucination(original, transformed);
+  assert.equal(result, transformed);
+});
+
+test('guardAgainstHallucination trims when model adds content', () => {
+  const original = 'The study was fundamental. Results were clear.';
+  const hallucinated = 'The study was key. Results were clear. Additionally the researchers found several other interesting patterns in the data that warranted further investigation and analysis across multiple domains.';
+  const result = guardAgainstHallucination(original, hallucinated);
+  assert.ok(result.length < hallucinated.length, 'should trim the output');
+  assert.ok(result.includes('key'), 'should keep the real replacement');
 });
