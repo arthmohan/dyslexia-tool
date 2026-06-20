@@ -13,7 +13,8 @@ address,location,true,general
 difficult,hard,true,general
 conversations,talks,true,professional
 curated,hand-picked,true,professional
-partnerships,tie-ups,true,professional
+partnerships,tie-ups,false,professional
+partnerships,alliances,true,professional
 brilliant,gifted,true,general
 building,creating,false,general
 incredible,remarkable,true,general

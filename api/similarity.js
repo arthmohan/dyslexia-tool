@@ -31,7 +31,7 @@ export default async function handler(req, res) {
 };
 
     const [vecA, vecB] = await Promise.all([
-      embed(original.slice(0, 2000)),    // cap at 2000 chars to stay within model limits
+      embed(original.slice(0, 2000)),
       embed(transformed.slice(0, 2000))
     ]);
 
@@ -43,7 +43,6 @@ export default async function handler(req, res) {
     res.status(200).json({ score: Math.round(score * 100) });
   } catch (err) {
     console.log('Similarity error:', err.message);
-    // Fall back to returning null so the UI still works
     res.status(200).json({ score: null, error: err.message });
   }
 }

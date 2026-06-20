@@ -16,12 +16,10 @@
     </div>
   </header>
 
-  <!-- Settings Toggle Button -->
   <button class="settings-toggle" onclick="toggleSettings()" aria-label="Display Settings">
     ⚙ Settings
   </button>
 
-  <!-- Settings Panel -->
   <div class="settings-panel" id="settings-panel">
     <div class="settings-header">
       <h3>Display Settings</h3>
@@ -67,7 +65,6 @@
 
   <main>
 
-    <!-- STEP 1: INPUT -->
     <section class="card" id="section-input">
       <h2 class="step-label">Step 1 — Upload or Paste Your Text</h2>
 
@@ -85,7 +82,6 @@
       <div class="char-count"><span id="char-count">0</span> characters</div>
     </section>
 
-    <!-- STEP 2: PROFILE -->
     <section class="card" id="section-profile">
       <h2 class="step-label">Step 2 — Choose Your Reading Profile</h2>
       <p class="profile-desc">Select which types of words should be simplified. Not sure? Leave it on All.</p>
@@ -118,7 +114,6 @@
       </div>
     </section>
 
-    <!-- STEP 3: PROCESS -->
     <section class="card" id="section-process">
       <h2 class="step-label">Step 3 — Transform</h2>
       <p class="profile-desc">When you're ready, hit the button below. This usually takes 10-20 seconds.</p>
@@ -131,7 +126,6 @@
       </div>
     </section>
 
-    <!-- OUTPUT -->
     <section class="card" id="section-output" style="display:none">
       <div class="output-header">
         <h2 class="step-label">Your Transformed Text</h2>
@@ -144,18 +138,18 @@
       <div class="output-box" id="output-box"></div>
 
       <div class="feedback-row">
-  <p class="feedback-label">Was this transformation accurate?</p>
-  <div class="feedback-btns">
-    <button class="feedback-btn good" onclick="submitFeedback(true)" title="Good output">👍 Looks good</button>
-    <button class="feedback-btn bad" onclick="submitFeedback(false)" title="Bad output">👎 Something's off</button>
-  </div>
-  <p class="feedback-thanks" id="feedback-thanks" style="display:none">Thanks for the feedback!</p>
-</div>
+        <p class="feedback-label">Was this transformation accurate?</p>
+        <div class="feedback-btns">
+          <button class="feedback-btn good" onclick="submitFeedback(true)" title="Good output">👍 Looks good</button>
+          <button class="feedback-btn bad" onclick="submitFeedback(false)" title="Bad output">👎 Something's off</button>
+        </div>
+        <p class="feedback-thanks" id="feedback-thanks" style="display:none">Thanks for the feedback!</p>
+      </div>
 
-<div class="output-actions">
-  <button class="btn-secondary" onclick="downloadPDF()">Download PDF</button>
-  <button class="btn-secondary" onclick="window.print()">Print</button>
-</div>
+      <div class="output-actions">
+        <button class="btn-secondary" onclick="downloadPDF()">Download PDF</button>
+        <button class="btn-secondary" onclick="window.print()">Print</button>
+      </div>
     </section>
 
   </main>
@@ -166,7 +160,6 @@
 
   <script src="libs/pdf.min.js"></script>
   <script src="libs/mammoth.browser.min.js"></script>
-  <script src="libs/jspdf.umd.min.js"></script>
   <script src="libs/marked.min.js"></script>
   <script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="app.js"></script>

@@ -271,7 +271,7 @@ function showOutput(text, score) {
 
   if (score !== null && score !== undefined) {
     scoreValue.textContent = score + '%';
-    if (score < 85) {
+    if (score < 60) {
       scoreBadge.classList.add('warning');
     } else {
       scoreBadge.classList.remove('warning');
