@@ -137,7 +137,7 @@ async function requestGroq(prompt) {
 }
 
 // ── Shared quality rules ──
-// Every profile gets these. They enforce the "1-2 levels down, same register" behavior.
+// Constrained profiles get these. They enforce the "1-2 levels down, same register" behavior.
 const QUALITY_RULES = `
 QUALITY RULES:
 - Reduce reading level by 1-2 levels, no more. Level 9 text becomes level 7-8, not level 4.
@@ -145,6 +145,18 @@ QUALITY RULES:
 - Every replacement must make the sentence easier to read, not harder or more awkward.
 - If a replacement changes the register (e.g. "partnerships" -> "tie-ups" in formal text), skip it or find a better fit (e.g. "partnerships" -> "alliances").
 - Phrase replacements ("place to stay") are often better than single-word swaps ("location") because they read more naturally.
+- Never touch proper nouns, names, numbers, acronyms, dates, or scientific terms.
+- Preserve all formatting: headings, bullets, paragraph breaks, emphasis.
+- Do not add or remove content.`;
+
+// The "all" profile gets looser rules: no reading level ceiling, just natural language.
+const ALL_QUALITY_RULES = `
+QUALITY RULES:
+- Replace as many target words as possible. If a word matches the criteria and a good replacement exists, replace it. Do not hold back.
+- The output must still read naturally. Every sentence should flow well after replacements.
+- Keep the same tone. Academic text can use simpler words and still sound academic. Do not make it sound childish.
+- If a replacement sounds awkward in context, find a better one rather than skipping the word entirely.
+- Phrase replacements ("place to stay", "make worse") are often better than single-word swaps.
 - Never touch proper nouns, names, numbers, acronyms, dates, or scientific terms.
 - Preserve all formatting: headings, bullets, paragraph breaks, emphasis.
 - Do not add or remove content.`;
@@ -169,7 +181,7 @@ Target words that are hard to read because of:
 - Visually crowded shapes (double letters, dense ascender/descender clusters)
 
 Replace every word that matches the target criteria above, as long as a good replacement exists. Do not skip matching words to keep changes low. The goal is to make the text genuinely easier for a dyslexic reader, not to make minimal edits.
-${QUALITY_RULES}
+${ALL_QUALITY_RULES}
 ${examplesSection}
 ${chunkNote}
 Return ONLY the transformed text, nothing else.
