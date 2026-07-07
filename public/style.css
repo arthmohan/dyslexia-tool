@@ -81,6 +81,12 @@ body.theme-dark {
   --accent: #5B9BD5;
   --accent-hover: #4A86BE;
   --accent-light: #1E3A5F;
+  /* Dark-tuned success/warning so the score badge stays readable
+     instead of putting cream text on pale green. */
+  --success: #7EC29A;
+  --success-light: #1F3A2A;
+  --warning: #E8B770;
+  --warning-light: #3A2E1A;
 }
 
 body.theme-peach {
@@ -591,60 +597,62 @@ footer {
 }
 
 /* ── Print ── */
+@page {
+  size: A4;
+  margin: 0;
+}
+
 @media print {
-  /* Hide UI chrome, keep only the transformed text. */
+  /* Hide everything except the actual transformed text. */
   header, footer, #section-input, #section-profile,
-  #section-process, .output-actions,
+  #section-process, .output-actions, .output-header,
   .settings-toggle, .settings-panel, .settings-overlay,
   .feedback-row { display: none !important; }
 
-  /* Honor the user's theme background AND their font/spacing choices. */
+  /* Full-bleed theme background — no white gutters. */
   html, body {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     background: var(--bg) !important;
     color: var(--text) !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
   }
 
-  main { padding: 0; max-width: 100%; }
+  main {
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: var(--bg) !important;
+    display: block !important;
+  }
+
   .card {
     background: var(--bg) !important;
-    border: none;
-    box-shadow: none;
-    padding: 0;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
   }
 
-  /* Preserve the reader's font, spacing, size, and colour. */
+  /* Content sits inside the full-bleed page with a comfortable internal margin.
+     Uses mm so it maps predictably to physical paper regardless of screen zoom. */
   .output-box {
     background: var(--bg) !important;
     color: var(--text) !important;
-    border: none;
-    padding: 0;
+    border: none !important;
+    padding: 18mm 16mm !important;
+    margin: 0 !important;
     font-family: inherit !important;
     letter-spacing: inherit;
     word-spacing: inherit;
     line-height: inherit;
+    min-height: 100vh;
+    box-sizing: border-box;
   }
 
-  .output-header {
-    margin-bottom: 12px;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 8px;
-  }
-
-  .step-label {
-    color: var(--text) !important;
-  }
-
-  .score-badge {
-    background: transparent !important;
-    border: 1px solid var(--border) !important;
-    color: var(--text) !important;
-  }
-  .score-label, .score-value { color: var(--text) !important; }
-
-  /* Body-level spacing rules already set letter/word/line via body.spacing-wide,
-     but ensure they cascade into the print output-box. */
+  /* Body-level spacing must cascade into the print output-box. */
   body.spacing-wide .output-box {
     letter-spacing: 0.12em !important;
     word-spacing: 0.25em !important;

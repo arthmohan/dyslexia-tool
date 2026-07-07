@@ -150,17 +150,34 @@ QUALITY RULES:
 - Preserve all formatting: headings, bullets, paragraph breaks, emphasis.
 - Do not add or remove content.`;
 
-// The "all" profile gets looser rules: no reading level ceiling, just natural language.
+// The "all" profile: replace visually difficult words but PRESERVE REGISTER.
+// The old version said "do not hold back" and the model made professional
+// documents sound childish. The rules below lead with tone preservation
+// and add an explicit do-not-touch list of common professional vocabulary.
 const ALL_QUALITY_RULES = `
-QUALITY RULES:
-- Replace as many target words as possible. If a word matches the criteria and a good replacement exists, replace it. Do not hold back.
-- The output must still read naturally. Every sentence should flow well after replacements.
-- Keep the same tone. Academic text can use simpler words and still sound academic. Do not make it sound childish.
-- If a replacement sounds awkward in context, find a better one rather than skipping the word entirely.
-- Phrase replacements ("place to stay", "make worse") are often better than single-word swaps.
-- Never touch proper nouns, names, numbers, acronyms, dates, or scientific terms.
-- Preserve all formatting: headings, bullets, paragraph breaks, emphasis.
-- CRITICAL: Do not add or remove content. Never invent new phrases, clauses, or sentences. Only replace existing words.`;
+QUALITY RULES (in priority order):
+
+1. PRESERVE REGISTER. This is the most important rule. If the input is professional, business, academic, or technical, the output must sound the same. Test every replacement: does the sentence still fit the document's tone? If not, keep the original word. A slightly harder word at the right register beats an easier word that sounds childish or out of place.
+
+2. Reduce reading load by 1-2 levels, no more. Level 10 text becomes level 8-9, not level 4.
+
+3. DO NOT replace these common professional/business/academic words even if they look complex. They are already accessible and replacing them destroys register:
+   conversations, stakeholders, essential, effective, guidance, insurance, contracts, invoicing, compliance, regulations, requirements, framework, evaluation, professional, business, financial, industry, agreement, document, application, information, department, government, appropriate, particular, additional, significant, established, considerable, international, understanding, operations, activities, materials, resources, procedures, standards, policies, protocols, statements.
+
+4. Only replace a word when BOTH conditions hold:
+   (a) it is visually difficult (letter confusion, 8+ chars with a shorter equivalent, or dense visual shape), AND
+   (b) a natural same-register replacement exists.
+   If either fails, leave the word alone.
+
+5. Phrase replacements ("place to stay", "make worse") often read more naturally than forced single-word swaps.
+
+6. NEVER touch proper nouns, names, numbers, acronyms, dates, currency, technical terms, industry terms, or scientific terms.
+
+7. PRESERVE ALL FORMATTING as markdown. Headings stay headings (# ## ###). Bullets stay bullets (- or *). Numbered lists stay numbered (1. 2. 3.). Paragraph breaks stay. Bold and italic stay.
+
+8. Do not add or remove content. Never invent new phrases, clauses, or sentences. Only replace existing words.
+
+9. Return the output as clean markdown so the frontend can render it. Do not wrap the response in code fences.`;
 
 // ── Per-profile prompts ──
 
@@ -174,18 +191,18 @@ ${good.length > 0 ? good.join('\n') : ''}
 ${bad.length > 0 ? '\nKnown bad (never do these):\n' + bad.join('\n') : ''}`;
   }
 
-  return `You are a dyslexia accessibility tool. Make text easier for dyslexic readers by replacing visually difficult words with clearer alternatives.
+  return `You are a dyslexia accessibility tool for adult readers of professional, academic, business, and general documents. Your job is to make text easier for dyslexic readers WITHOUT changing what the document sounds like.
 
 Target words that are hard to read because of:
 - Confusing letter patterns (b/d, p/q, l/i, ll, dd, bb, pp)
-- Excessive length (8+ characters where a shorter option exists)
+- Excessive length (8+ characters where a shorter same-register option exists)
 - Visually crowded shapes (double letters, dense ascender/descender clusters)
 
-Replace every word that matches the target criteria above, as long as a good replacement exists. Do not skip matching words to keep changes low. The goal is to make the text genuinely easier for a dyslexic reader, not to make minimal edits.
+Be selective. A dyslexic professional reading a business checklist wants a business checklist that is easier to scan, not a simplified children's version. When in doubt, leave the word alone. Preserving tone matters more than replacing every candidate word.
 ${ALL_QUALITY_RULES}
 ${examplesSection}
 ${chunkNote}
-Return ONLY the transformed text, nothing else.
+Return ONLY the transformed markdown, nothing else. No commentary, no code fences.
 
 Text:
 ${text}`;

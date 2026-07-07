@@ -1,31 +1,72 @@
 // ── Settings Panel ──────────────────────────────────────────────────────────
 
+const SETTINGS_KEY = 'cleartext-settings-v1';
+const VALID_SETTINGS = {
+  font:    ['comic', 'opendys'],
+  spacing: ['normal', 'wide'],
+  theme:   ['cream', 'dark', 'peach', 'contrast']
+};
+const DEFAULT_SETTINGS = { font: 'comic', spacing: 'normal', theme: 'cream' };
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return { ...DEFAULT_SETTINGS };
+    const parsed = JSON.parse(raw);
+    // Guard against stale/invalid values from earlier versions.
+    const out = { ...DEFAULT_SETTINGS };
+    for (const key of Object.keys(VALID_SETTINGS)) {
+      if (VALID_SETTINGS[key].includes(parsed[key])) out[key] = parsed[key];
+    }
+    return out;
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
+function saveSettings(settings) {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // localStorage disabled or full — silent fail, settings just won't persist.
+  }
+}
+
 function toggleSettings() {
   document.getElementById('settings-panel').classList.toggle('open');
   document.getElementById('settings-overlay').classList.toggle('open');
 }
 
-function setSetting(group, btn) {
-  document.querySelectorAll(`[data-group="${group}"]`).forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  const value = btn.dataset.value;
+function applySetting(group, value) {
+  const groupClasses = {
+    font:    ['font-comic', 'font-opendys'],
+    spacing: ['spacing-normal', 'spacing-wide'],
+    theme:   ['theme-cream', 'theme-dark', 'theme-peach', 'theme-contrast']
+  }[group];
+  if (!groupClasses) return;
+  document.body.classList.remove(...groupClasses);
+  document.body.classList.add(`${group}-${value}`);
 
-  if (group === 'font') {
-    document.body.classList.remove('font-comic', 'font-opendys');
-    document.body.classList.add('font-' + value);
-  }
-  if (group === 'spacing') {
-    document.body.classList.remove('spacing-normal', 'spacing-wide');
-    document.body.classList.add('spacing-' + value);
-  }
-  if (group === 'theme') {
-    document.body.classList.remove('theme-cream', 'theme-dark', 'theme-peach', 'theme-contrast');
-    document.body.classList.add('theme-' + value);
-  }
+  // Sync the button "active" state so restored settings show up in the UI.
+  document.querySelectorAll(`[data-group="${group}"]`).forEach(b => {
+    b.classList.toggle('active', b.dataset.value === value);
+  });
+}
+
+function setSetting(group, btn) {
+  const value = btn.dataset.value;
+  applySetting(group, value);
+
+  const current = loadSettings();
+  current[group] = value;
+  saveSettings(current);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  document.body.classList.add('font-comic', 'spacing-normal', 'theme-cream');
+  const settings = loadSettings();
+  applySetting('font', settings.font);
+  applySetting('spacing', settings.spacing);
+  applySetting('theme', settings.theme);
 
   // ── Character counter ──
   const textarea = document.getElementById('paste-input');
@@ -108,14 +149,8 @@ async function extractDocx(file) {
 async function extractPdf(file) {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  let text = '';
 
-  for (let i = 1; i <= pdf.numPages; i++) {
-    setUploadStatus(`Reading PDF page ${i} of ${pdf.numPages}...`);
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    text += content.items.map(item => item.str).join(' ') + '\n';
-  }
+  const text = await extractPdfStructured(pdf);
 
   if (isTextExtractionUsable(text, pdf.numPages)) {
     return text;
@@ -123,6 +158,137 @@ async function extractPdf(file) {
 
   setUploadStatus('Scanned PDF detected. Running OCR...');
   return extractPdfWithOcr(pdf);
+}
+
+// Extracts text from a PDF while preserving line breaks, paragraphs, bullets,
+// and headings. Uses each text item's y-coordinate and font height to group
+// items into lines, detect paragraph gaps, and detect headings by relative size.
+async function extractPdfStructured(pdf) {
+  const allItems = [];
+  const bodySizes = [];
+
+  for (let i = 1; i <= pdf.numPages; i++) {
+    setUploadStatus(`Reading PDF page ${i} of ${pdf.numPages}...`);
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 1 });
+    const content = await page.getTextContent();
+
+    for (const item of content.items) {
+      if (!item.str) continue;
+      // pdf.js item.transform = [scaleX, skewY, skewX, scaleY, x, y]. y is bottom-up,
+      // so flip against the viewport height to get top-down coords.
+      const x = item.transform[4];
+      const yRaw = item.transform[5];
+      const height = item.height || Math.abs(item.transform[3]) || 10;
+
+      allItems.push({
+        str: item.str,
+        x,
+        y: viewport.height - yRaw,
+        height,
+        pageIndex: i - 1
+      });
+
+      if (item.str.trim()) bodySizes.push(height);
+    }
+
+    allItems.push({ pageBreak: true, pageIndex: i - 1 });
+  }
+
+  if (!bodySizes.length) return '';
+
+  // Median height = the body-text size. Anything meaningfully bigger is a heading.
+  bodySizes.sort((a, b) => a - b);
+  const bodySize = bodySizes[Math.floor(bodySizes.length / 2)] || 10;
+  const headingThreshold = bodySize * 1.2;
+
+  // Group items into lines by y-coordinate (tolerance = half a line height).
+  const lines = [];
+  let currentLine = null;
+
+  for (const item of allItems) {
+    if (item.pageBreak) {
+      if (currentLine) { lines.push(currentLine); currentLine = null; }
+      lines.push({ pageBreak: true });
+      continue;
+    }
+
+    const sameLine = currentLine
+      && currentLine.pageIndex === item.pageIndex
+      && Math.abs(item.y - currentLine.y) < item.height * 0.5;
+
+    if (sameLine) {
+      // Insert a space if there's a visible gap between the previous glyph and this one.
+      const needsSpace = currentLine.text.length
+        && !currentLine.text.endsWith(' ')
+        && !item.str.startsWith(' ');
+      currentLine.text += (needsSpace && (item.x - currentLine.lastX) > item.height * 0.3 ? ' ' : '') + item.str;
+      currentLine.maxHeight = Math.max(currentLine.maxHeight, item.height);
+      currentLine.lastX = item.x + (item.str.length * item.height * 0.5);
+    } else {
+      if (currentLine) lines.push(currentLine);
+      currentLine = {
+        text: item.str,
+        x: item.x,
+        y: item.y,
+        maxHeight: item.height,
+        pageIndex: item.pageIndex,
+        lastX: item.x + (item.str.length * item.height * 0.5)
+      };
+    }
+  }
+  if (currentLine) lines.push(currentLine);
+
+  // Convert lines to markdown, detecting paragraph breaks, bullets, and headings.
+  const output = [];
+  let prevLine = null;
+
+  for (const line of lines) {
+    if (line.pageBreak) {
+      if (output.length && output[output.length - 1] !== '') output.push('');
+      prevLine = null;
+      continue;
+    }
+
+    const text = line.text.trim();
+    if (!text) continue;
+
+    // Paragraph break: a bigger-than-normal vertical gap OR heading transition.
+    if (prevLine && prevLine.pageIndex === line.pageIndex) {
+      const gap = line.y - (prevLine.y + prevLine.maxHeight);
+      const paragraphGap = gap > line.maxHeight * 0.8;
+      const sizeShift = Math.abs(line.maxHeight - prevLine.maxHeight) > bodySize * 0.3;
+      if (paragraphGap || sizeShift) {
+        if (output.length && output[output.length - 1] !== '') output.push('');
+      }
+    }
+
+    // Heading: font clearly larger than body text.
+    const isHeading = line.maxHeight >= headingThreshold;
+
+    // Bullet: leading bullet character or dash. Numbered list: "1." / "1)".
+    const bulletMatch = text.match(/^[•◦▪▫●○⁃•●○◦▪▫‣⁃*+\-]\s+(.+)/);
+    const numberMatch = text.match(/^(\d+)[\.\)]\s+(.+)/);
+
+    let md;
+    if (isHeading && !bulletMatch && !numberMatch) {
+      const ratio = line.maxHeight / bodySize;
+      const level = ratio >= 1.8 ? 1 : ratio >= 1.4 ? 2 : 3;
+      md = '#'.repeat(level) + ' ' + text;
+    } else if (bulletMatch) {
+      md = '- ' + bulletMatch[1];
+    } else if (numberMatch) {
+      md = numberMatch[1] + '. ' + numberMatch[2];
+    } else {
+      md = text;
+    }
+
+    output.push(md);
+    prevLine = line;
+  }
+
+  // Collapse triple+ blank lines and trim trailing whitespace.
+  return output.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 function isTextExtractionUsable(text, pageCount) {
@@ -337,16 +503,35 @@ function downloadPDF() {
       src: url('${window.location.origin}/fonts/OpenDyslexic-Bold.otf') format('opentype');
       font-weight: 700;
     }
+    /* Full-bleed page: no browser margins, theme colour extends edge to edge. */
+    @page {
+      size: A4;
+      margin: 0;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: ${theme.bg};
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
     body {
       font-family: ${fontFamily};
       font-size: 16px;
       line-height: ${lineHeight};
       letter-spacing: ${letterSpacing};
       word-spacing: ${wordSpacing};
+      color: ${theme.text};
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    /* Content sits inside the full-bleed page with a comfortable printable margin. */
+    #content {
+      padding: 18mm 16mm;
       background: ${theme.bg};
       color: ${theme.text};
-      padding: 48px;
-      margin: 0;
+      min-height: 100vh;
+      box-sizing: border-box;
     }
     h1, h2, h3, h4, h5, h6 { font-weight: 700; margin: 1em 0 0.4em; line-height: 1.4; }
     h1 { font-size: 1.6em; }
@@ -357,7 +542,9 @@ function downloadPDF() {
     li { margin-bottom: 0.3em; }
     strong { font-weight: 700; }
     em { font-style: italic; }
-    blockquote { border-left: 4px solid #2D5FA6; padding-left: 16px; margin: 0.8em 0; }
+    blockquote { border-left: 4px solid currentColor; padding-left: 16px; margin: 0.8em 0; opacity: 0.85; }
+    h1, h2, h3, h4, h5, h6 { page-break-after: avoid; }
+    p, li { page-break-inside: avoid; }
   </style>
 </head>
 <body>
