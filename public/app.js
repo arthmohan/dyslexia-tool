@@ -459,10 +459,24 @@ function escapeHtml(text) {
 }
 
 // ── PDF Download ─────────────────────────────────────────────────────────────
+// Uses html2pdf.js (jsPDF + html2canvas) to generate the PDF entirely in-page,
+// then triggers a download. No print dialog, no popup window, no extra clicks.
 
-function downloadPDF() {
+async function downloadPDF() {
   const text = window._transformedText;
   if (!text || !text.trim()) return;
+
+  if (typeof html2pdf === 'undefined') {
+    alert('PDF library did not load. Please refresh and try again.');
+    return;
+  }
+
+  const btn = document.getElementById('btn-download-pdf');
+  const originalLabel = btn ? btn.textContent : null;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Generating PDF...';
+  }
 
   const currentFont = document.body.classList.contains('font-opendys') ? 'opendys' : 'comic';
   const currentSpacing = document.body.classList.contains('spacing-wide') ? 'wide' : 'normal';
@@ -486,81 +500,92 @@ function downloadPDF() {
   };
   const theme = themes[currentTheme];
 
-  const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8"/>
-  <title>ClearText Output</title>
-  <link href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap" rel="stylesheet"/>
-  <style>
-    @font-face {
-      font-family: 'OpenDyslexic';
-      src: url('${window.location.origin}/fonts/OpenDyslexic-Regular.otf') format('opentype');
-      font-weight: 400;
-    }
-    @font-face {
-      font-family: 'OpenDyslexic';
-      src: url('${window.location.origin}/fonts/OpenDyslexic-Bold.otf') format('opentype');
-      font-weight: 700;
-    }
-    /* Full-bleed page: no browser margins, theme colour extends edge to edge. */
-    @page {
-      size: A4;
-      margin: 0;
-    }
-    html, body {
-      margin: 0;
-      padding: 0;
-      background: ${theme.bg};
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
-    body {
-      font-family: ${fontFamily};
-      font-size: 16px;
-      line-height: ${lineHeight};
-      letter-spacing: ${letterSpacing};
-      word-spacing: ${wordSpacing};
-      color: ${theme.text};
-      min-height: 100vh;
-      box-sizing: border-box;
-    }
-    /* Content sits inside the full-bleed page with a comfortable printable margin. */
-    #content {
-      padding: 18mm 16mm;
-      background: ${theme.bg};
-      color: ${theme.text};
-      min-height: 100vh;
-      box-sizing: border-box;
-    }
-    h1, h2, h3, h4, h5, h6 { font-weight: 700; margin: 1em 0 0.4em; line-height: 1.4; }
-    h1 { font-size: 1.6em; }
-    h2 { font-size: 1.4em; }
-    h3 { font-size: 1.2em; }
-    p { margin-bottom: 0.8em; }
-    ul, ol { padding-left: 1.6em; margin-bottom: 0.8em; }
-    li { margin-bottom: 0.3em; }
-    strong { font-weight: 700; }
-    em { font-style: italic; }
-    blockquote { border-left: 4px solid currentColor; padding-left: 16px; margin: 0.8em 0; opacity: 0.85; }
-    h1, h2, h3, h4, h5, h6 { page-break-after: avoid; }
-    p, li { page-break-inside: avoid; }
-  </style>
-</head>
-<body>
-  <div id="content"></div>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
-  <script>
-    document.getElementById('content').innerHTML = marked.parse(${JSON.stringify(text)});
-    window.onload = () => setTimeout(() => { window.print(); window.close(); }, 1000);
-  </script>
-</body>
-</html>`;
+  // Build an offscreen container sized to A4 width so html2canvas rasterizes
+  // at the exact proportions jsPDF will save. Full-bleed theme colour, then
+  // an inner padding acts as the printable margin.
+  const container = document.createElement('div');
+  container.style.cssText = `
+    position: fixed;
+    top: -10000px;
+    left: 0;
+    width: 794px;
+    background: ${theme.bg};
+    color: ${theme.text};
+    font-family: ${fontFamily};
+    font-size: 16px;
+    line-height: ${lineHeight};
+    letter-spacing: ${letterSpacing};
+    word-spacing: ${wordSpacing};
+    box-sizing: border-box;
+  `;
 
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  const win = window.open(url, '_blank');
-  if (!win) alert('Please allow popups for this site to download PDF.');
+  const inner = document.createElement('div');
+  inner.style.cssText = `
+    padding: 68px 60px;
+    background: ${theme.bg};
+    color: ${theme.text};
+  `;
+  inner.innerHTML = marked.parse(text);
+
+  // Style the markdown children so they match the app's output-box look.
+  const styleTag = document.createElement('style');
+  styleTag.textContent = `
+    .pdf-render h1, .pdf-render h2, .pdf-render h3,
+    .pdf-render h4, .pdf-render h5, .pdf-render h6 {
+      font-weight: 700; margin: 1em 0 0.4em; line-height: 1.4; color: ${theme.text};
+    }
+    .pdf-render h1 { font-size: 1.6em; }
+    .pdf-render h2 { font-size: 1.4em; }
+    .pdf-render h3 { font-size: 1.2em; }
+    .pdf-render p { margin-bottom: 0.8em; }
+    .pdf-render ul, .pdf-render ol { padding-left: 1.6em; margin-bottom: 0.8em; }
+    .pdf-render li { margin-bottom: 0.3em; }
+    .pdf-render strong { font-weight: 700; }
+    .pdf-render em { font-style: italic; }
+    .pdf-render blockquote {
+      border-left: 4px solid currentColor;
+      padding-left: 16px; margin: 0.8em 0; opacity: 0.85;
+    }
+  `;
+  container.className = 'pdf-render';
+  container.appendChild(styleTag);
+  container.appendChild(inner);
+  document.body.appendChild(container);
+
+  // Give web fonts (Comic Neue via Google, OpenDyslexic via @font-face)
+  // a moment to load before rasterizing so the PDF picks up the right glyphs.
+  try {
+    if (document.fonts && document.fonts.ready) await document.fonts.ready;
+  } catch { /* older browsers: skip */ }
+
+  try {
+    await html2pdf().set({
+      margin: 0,
+      filename: 'cleartext-output.pdf',
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: {
+        scale: 2,
+        backgroundColor: theme.bg,
+        useCORS: true,
+        letterRendering: true
+      },
+      jsPDF: {
+        unit: 'mm',
+        format: 'a4',
+        orientation: 'portrait'
+      },
+      pagebreak: { mode: ['css', 'legacy'] }
+    }).from(container).save();
+  } catch (err) {
+    console.error('PDF export failed:', err);
+    alert('Could not generate the PDF. ' + (err.message || 'Unknown error.'));
+  } finally {
+    container.remove();
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = originalLabel || 'Download PDF';
+    }
+  }
 }
 
 // ── Feedback ─────────────────────────────────────────────────────────────────

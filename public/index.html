@@ -151,8 +151,7 @@
       </div>
 
       <div class="output-actions">
-        <button class="btn-secondary" onclick="downloadPDF()">Download PDF</button>
-        <button class="btn-secondary" onclick="window.print()">Print</button>
+        <button class="btn-secondary" id="btn-download-pdf" onclick="downloadPDF()">Download PDF</button>
       </div>
     </section>
 
@@ -166,6 +165,7 @@
   <script src="libs/mammoth.browser.min.js"></script>
   <script src="libs/marked.min.js"></script>
   <script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="app.js"></script>
 
 </body>
