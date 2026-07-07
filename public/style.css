@@ -94,6 +94,29 @@ body.theme-peach {
   --accent-light: #EAF0FB;
 }
 
+body.theme-contrast {
+  --bg: #0A1F3D;
+  --surface: #0F2952;
+  --border: #234070;
+  --text: #FDEBD0;
+  --text-muted: #E8CDA5;
+  --accent: #FFB88A;
+  --accent-hover: #FFA36B;
+  --accent-light: #1A3A6A;
+  --success: #FDEBD0;
+  --success-light: #1A3A6A;
+  --warning: #FFB88A;
+  --warning-light: #1A3A6A;
+}
+
+/* Highest-contrast theme: header + primary buttons paint peach accent
+   on top of the dark navy body, so text on those surfaces must flip
+   to navy so it stays readable. */
+body.theme-contrast header { color: #0A1F3D; }
+body.theme-contrast .btn-primary { color: #0A1F3D; }
+body.theme-contrast .score-value { color: var(--text); }
+body.theme-contrast .profile-icon { color: var(--text); }
+
 /* ── Header ── */
 header {
   background: var(--accent);
@@ -569,17 +592,68 @@ footer {
 
 /* ── Print ── */
 @media print {
+  /* Hide UI chrome, keep only the transformed text. */
   header, footer, #section-input, #section-profile,
-  #section-process, .output-actions, .score-badge,
+  #section-process, .output-actions,
   .settings-toggle, .settings-panel, .settings-overlay,
   .feedback-row { display: none !important; }
-  .card { border: none; box-shadow: none; padding: 0; }
+
+  /* Honor the user's theme background AND their font/spacing choices. */
+  html, body {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    background: var(--bg) !important;
+    color: var(--text) !important;
+  }
+
+  main { padding: 0; max-width: 100%; }
+  .card {
+    background: var(--bg) !important;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+  }
+
+  /* Preserve the reader's font, spacing, size, and colour. */
   .output-box {
+    background: var(--bg) !important;
+    color: var(--text) !important;
     border: none;
     padding: 0;
-    font-size: 16px;
+    font-family: inherit !important;
+    letter-spacing: inherit;
+    word-spacing: inherit;
+    line-height: inherit;
   }
-  body { background: white !important; }
+
+  .output-header {
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+  }
+
+  .step-label {
+    color: var(--text) !important;
+  }
+
+  .score-badge {
+    background: transparent !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text) !important;
+  }
+  .score-label, .score-value { color: var(--text) !important; }
+
+  /* Body-level spacing rules already set letter/word/line via body.spacing-wide,
+     but ensure they cascade into the print output-box. */
+  body.spacing-wide .output-box {
+    letter-spacing: 0.12em !important;
+    word-spacing: 0.25em !important;
+    line-height: 2.4 !important;
+  }
+
+  /* Prevent orphaned headings on new pages. */
+  h1, h2, h3, h4, h5, h6 { page-break-after: avoid; }
+  p, li { page-break-inside: avoid; }
 }
 
 /* ── Responsive ── */

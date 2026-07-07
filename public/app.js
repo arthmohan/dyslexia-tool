@@ -19,7 +19,7 @@ function setSetting(group, btn) {
     document.body.classList.add('spacing-' + value);
   }
   if (group === 'theme') {
-    document.body.classList.remove('theme-cream', 'theme-dark', 'theme-peach');
+    document.body.classList.remove('theme-cream', 'theme-dark', 'theme-peach', 'theme-contrast');
     document.body.classList.add('theme-' + value);
   }
 }
@@ -301,7 +301,8 @@ function downloadPDF() {
   const currentFont = document.body.classList.contains('font-opendys') ? 'opendys' : 'comic';
   const currentSpacing = document.body.classList.contains('spacing-wide') ? 'wide' : 'normal';
   const currentTheme = document.body.classList.contains('theme-dark') ? 'dark'
-    : document.body.classList.contains('theme-peach') ? 'peach' : 'cream';
+    : document.body.classList.contains('theme-peach') ? 'peach'
+    : document.body.classList.contains('theme-contrast') ? 'contrast' : 'cream';
 
   const fontFamily = currentFont === 'opendys'
     ? "'OpenDyslexic', cursive"
@@ -312,9 +313,10 @@ function downloadPDF() {
   const lineHeight = currentSpacing === 'wide' ? '2.4' : '2.2';
 
   const themes = {
-    cream: { bg: '#FAFAF7', text: '#1A1A1A' },
-    dark:  { bg: '#1C1C1E', text: '#F5F0E8' },
-    peach: { bg: '#FDEBD0', text: '#1A1A1A' }
+    cream:    { bg: '#FAFAF7', text: '#1A1A1A' },
+    dark:     { bg: '#1C1C1E', text: '#F5F0E8' },
+    peach:    { bg: '#FDEBD0', text: '#1A1A1A' },
+    contrast: { bg: '#0A1F3D', text: '#FDEBD0' }
   };
   const theme = themes[currentTheme];
 
