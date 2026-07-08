@@ -525,8 +525,13 @@ async function downloadPDF() {
       _fetchFontBytes(fontPaths.regular),
       _fetchFontBytes(fontPaths.bold)
     ]);
-    const fontRegular = await pdfDoc.embedFont(regBytes, { subset: true });
-    const fontBold = await pdfDoc.embedFont(boldBytes, { subset: true });
+    // NOTE: we intentionally do NOT pass { subset: true } here. fontkit's
+    // subsetting code path throws a RangeError in Safari's WebKit engine
+    // ("value argument is out of bounds") for some combinations of glyphs.
+    // Embedding the full font sidesteps that path entirely. PDFs are ~150-200 KB
+    // bigger, which is fine for a document that ships once.
+    const fontRegular = await pdfDoc.embedFont(regBytes);
+    const fontBold = await pdfDoc.embedFont(boldBytes);
 
     // Theme + spacing settings mirror the sidebar.
     const themeHex = {

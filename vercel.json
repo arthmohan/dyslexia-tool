@@ -2,6 +2,21 @@
   "version": 2,
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1" },
+    {
+      "src": "/index.html",
+      "dest": "/public/index.html",
+      "headers": { "cache-control": "no-cache, no-store, must-revalidate" }
+    },
+    {
+      "src": "/",
+      "dest": "/public/index.html",
+      "headers": { "cache-control": "no-cache, no-store, must-revalidate" }
+    },
+    {
+      "src": "/app.js",
+      "dest": "/public/app.js",
+      "headers": { "cache-control": "no-cache, no-store, must-revalidate" }
+    },
     { "src": "/(.*)", "dest": "/public/$1" }
   ]
 }
