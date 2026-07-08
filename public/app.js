@@ -459,19 +459,35 @@ function escapeHtml(text) {
 }
 
 // ── PDF Download ─────────────────────────────────────────────────────────────
-// Text-based PDF: no HTML rasterization, no html2canvas, no popup, no dialog.
-// Walks the markdown output and places text with jsPDF's text API. Works in
-// Safari (which chokes on html2canvas when browser extensions inject globals
-// into cloned iframes), gives selectable/searchable text, and downloads
-// instantly with the user's theme applied.
+// Text-based PDF via pdf-lib + fontkit. No HTML rasterization, no html2canvas,
+// no popup, no print dialog. Works across every browser (jsPDF had issues with
+// Safari extensions and couldn't embed CFF-flavored OpenType fonts). This
+// pipeline embeds real OpenDyslexic glyphs (subsetted) when the user picked
+// that font, so the PDF matches what's on screen.
+
+const _fontCache = {};
+async function _fetchFontBytes(url) {
+  if (_fontCache[url]) return _fontCache[url];
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error('Failed to load font: ' + url);
+  const buf = await resp.arrayBuffer();
+  _fontCache[url] = buf;
+  return buf;
+}
+
+// Convert '#RRGGBB' into pdf-lib's normalised rgb() colour.
+function _hexToRgb(rgbFn, hex) {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  return rgbFn(r, g, b);
+}
 
 async function downloadPDF() {
   const text = window._transformedText;
   if (!text || !text.trim()) return;
 
-  const jspdfNs = window.jspdf || window.jsPDF;
-  const JsPDFCtor = jspdfNs && (jspdfNs.jsPDF || jspdfNs);
-  if (!JsPDFCtor) {
+  if (typeof PDFLib === 'undefined' || typeof fontkit === 'undefined') {
     alert('PDF library did not load. Please refresh and try again.');
     return;
   }
@@ -484,7 +500,36 @@ async function downloadPDF() {
   }
 
   try {
-    const themes = {
+    const { PDFDocument, rgb } = PDFLib;
+
+    const pdfDoc = await PDFDocument.create();
+    pdfDoc.registerFontkit(fontkit);
+
+    // Font selection: the user's sidebar choice is used for the ENTIRE PDF.
+    //   - OpenDyslexic → embed OpenDyslexic-Regular.otf / Bold.otf
+    //   - Comic Neue  → embed ComicNeue-Regular.ttf / Bold.ttf
+    // No Helvetica fallback anywhere. No per-character font mixing. The
+    // dyslexia-friendly font the reader chose is what they get on paper.
+    const useOpenDys = document.body.classList.contains('font-opendys');
+    const fontPaths = useOpenDys
+      ? { regular: '/fonts/OpenDyslexic-Regular.otf', bold: '/fonts/OpenDyslexic-Bold.otf' }
+      : { regular: '/fonts/ComicNeue-Regular.ttf',    bold: '/fonts/ComicNeue-Bold.ttf' };
+
+    // Comic Neue's Latin subset doesn't include the ₹ glyph, so a ₹ in the
+    // input would render as a blank .notdef box. Substitute a legible ASCII
+    // equivalent instead so no meaning is lost. OpenDyslexic ships ₹, so
+    // this substitution only kicks in on the Comic Neue path.
+    const renderText = useOpenDys ? text : text.replace(/₹/g, 'Rs.');
+
+    const [regBytes, boldBytes] = await Promise.all([
+      _fetchFontBytes(fontPaths.regular),
+      _fetchFontBytes(fontPaths.bold)
+    ]);
+    const fontRegular = await pdfDoc.embedFont(regBytes, { subset: true });
+    const fontBold = await pdfDoc.embedFont(boldBytes, { subset: true });
+
+    // Theme + spacing settings mirror the sidebar.
+    const themeHex = {
       cream:    { bg: '#FAFAF7', text: '#1A1A1A' },
       dark:     { bg: '#1C1C1E', text: '#F5F0E8' },
       peach:    { bg: '#FDEBD0', text: '#1A1A1A' },
@@ -493,107 +538,151 @@ async function downloadPDF() {
     const currentTheme = document.body.classList.contains('theme-dark') ? 'dark'
       : document.body.classList.contains('theme-peach') ? 'peach'
       : document.body.classList.contains('theme-contrast') ? 'contrast' : 'cream';
-    const theme = themes[currentTheme];
+    const bgColor = _hexToRgb(rgb, themeHex[currentTheme].bg);
+    const textColor = _hexToRgb(rgb, themeHex[currentTheme].text);
 
-    // Extra-wide spacing gets a taller line height and a hair more letter
-    // spacing than default so the PDF matches the on-screen preference.
+    // Wide spacing widens the LINE height. Per-character spacing is not
+    // applied in the PDF; it caused hard-to-fix wrap overshoot with jsPDF
+    // and pdf-lib doesn't expose a first-class API for it either. The
+    // extra line spacing already gives dyslexic readers the vertical
+    // breathing room that matters most in a printed doc.
     const wideSpacing = document.body.classList.contains('spacing-wide');
     const lineHeightMul = wideSpacing ? 1.75 : 1.45;
-    const letterSpacingPt = wideSpacing ? 0.5 : 0;
 
-    const pdf = new JsPDFCtor({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-    const pageW = 210;
-    const pageH = 297;
-    const marginX = 16;
-    const marginTop = 20;
-    const marginBottom = 20;
+    // A4 in PDF points (72 pt/inch): 595.28 × 841.89.
+    const pageW = 595.28;
+    const pageH = 841.89;
+    // 20mm top/bottom, 16mm sides, converted to pt (1mm = 2.83465 pt).
+    const marginX = 45.35;
+    const marginTop = 56.7;
+    const marginBottom = 56.7;
     const contentW = pageW - marginX * 2;
 
-    // Fill the page with the theme background so the PDF is edge-to-edge coloured.
-    const paintBg = () => {
-      pdf.setFillColor(theme.bg);
-      pdf.rect(0, 0, pageW, pageH, 'F');
-      pdf.setTextColor(theme.text);
+    // pdf-lib uses a bottom-left origin. We track cursorY as the TOP of the
+    // next line to be drawn, then compute the baseline just before drawing.
+    let page = null;
+    let cursorY = 0;
+
+    const startPage = () => {
+      page = pdfDoc.addPage([pageW, pageH]);
+      page.drawRectangle({
+        x: 0, y: 0, width: pageW, height: pageH, color: bgColor
+      });
+      cursorY = pageH - marginTop;
     };
+    startPage();
 
-    paintBg();
-    pdf.setFont('helvetica', 'normal');
-    if (typeof pdf.setCharSpace === 'function') pdf.setCharSpace(letterSpacingPt);
+    // Text width in the currently-active font.
+    const measure = (font, size, str) => font.widthOfTextAtSize(str, size);
 
-    let y = marginTop;
-
-    const addPage = () => {
-      pdf.addPage();
-      paintBg();
-      if (typeof pdf.setCharSpace === 'function') pdf.setCharSpace(letterSpacingPt);
-      y = marginTop;
-    };
-
-    const ptToMm = (pt) => pt * 0.3528;
-
-    // Places a wrapped block of text at (marginX + indent, y). Advances y.
-    // Handles page breaks in the middle of long blocks.
-    const placeBlock = (raw, { size, bold = false, indent = 0, marker = null, markerWidth = 0 } = {}) => {
-      pdf.setFont('helvetica', bold ? 'bold' : 'normal');
-      pdf.setFontSize(size);
-      const lineHeight = ptToMm(size) * lineHeightMul;
-      const availableW = contentW - indent - markerWidth;
-      const cleaned = stripInlineMarkdown(raw);
-      const wrapped = pdf.splitTextToSize(cleaned, availableW);
-
-      for (let i = 0; i < wrapped.length; i++) {
-        if (y + lineHeight > pageH - marginBottom) addPage();
-        // Baseline sits at the bottom of the line box; jsPDF's y is the baseline.
-        const baselineY = y + lineHeight * 0.78;
-        if (i === 0 && marker) {
-          pdf.text(marker, marginX + indent, baselineY);
+    // Word-wrap by measuring candidate line width against the font metrics.
+    // Falls back to hard-splitting single tokens wider than the column.
+    const wrap = (font, size, str, maxWidth) => {
+      const words = str.split(/\s+/).filter(Boolean);
+      if (!words.length) return [];
+      const lines = [];
+      let cur = '';
+      for (const word of words) {
+        const candidate = cur ? cur + ' ' + word : word;
+        if (measure(font, size, candidate) > maxWidth && cur) {
+          lines.push(cur);
+          cur = word;
+        } else {
+          cur = candidate;
         }
-        pdf.text(wrapped[i], marginX + indent + markerWidth, baselineY);
-        y += lineHeight;
+      }
+      if (cur) lines.push(cur);
+
+      // Hard-break tokens still wider than the column (long URLs, etc.).
+      const finalLines = [];
+      for (const line of lines) {
+        if (measure(font, size, line) <= maxWidth) { finalLines.push(line); continue; }
+        let buf = '';
+        for (const ch of line) {
+          if (measure(font, size, buf + ch) > maxWidth && buf) {
+            finalLines.push(buf);
+            buf = ch;
+          } else {
+            buf += ch;
+          }
+        }
+        if (buf) finalLines.push(buf);
+      }
+      return finalLines;
+    };
+
+    const placeBlock = (raw, { size, bold = false, indent = 0, marker = null, markerWidth = 0 } = {}) => {
+      const font = bold ? fontBold : fontRegular;
+      const cleaned = stripInlineMarkdown(raw);
+      const availableW = contentW - indent - markerWidth;
+      const lines = wrap(font, size, cleaned, availableW);
+      const lineHeight = size * lineHeightMul;
+
+      for (let i = 0; i < lines.length; i++) {
+        if (cursorY - lineHeight < marginBottom) startPage();
+        // Baseline sits about 20% up from the bottom of the line box.
+        const baselineY = cursorY - lineHeight * 0.78;
+        if (i === 0 && marker) {
+          page.drawText(marker, {
+            x: marginX + indent, y: baselineY, size, font, color: textColor
+          });
+        }
+        page.drawText(lines[i], {
+          x: marginX + indent + markerWidth, y: baselineY, size, font, color: textColor
+        });
+        cursorY -= lineHeight;
       }
     };
 
-    // Walks the markdown output line by line and dispatches to placeBlock.
-    const lines = text.replace(/\r\n/g, '\n').split('\n');
+    // Walk the markdown line by line and dispatch each to placeBlock.
+    const lines = renderText.replace(/\r\n/g, '\n').split('\n');
     let lastWasBlank = true;
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
+    for (const line of lines) {
       const trimmed = line.trim();
 
       if (!trimmed) {
-        // Paragraph gap. Collapse consecutive blanks.
-        if (!lastWasBlank) y += ptToMm(12) * lineHeightMul * 0.5;
+        if (!lastWasBlank) cursorY -= 12 * lineHeightMul * 0.5; // half-line paragraph gap
         lastWasBlank = true;
         continue;
       }
 
       let m;
       if ((m = trimmed.match(/^###\s+(.+)/))) {
-        if (!lastWasBlank) y += 3;
+        if (!lastWasBlank) cursorY -= 8;
         placeBlock(m[1], { size: 14, bold: true });
-        y += 1.5;
+        cursorY -= 4;
       } else if ((m = trimmed.match(/^##\s+(.+)/))) {
-        if (!lastWasBlank) y += 4;
+        if (!lastWasBlank) cursorY -= 12;
         placeBlock(m[1], { size: 17, bold: true });
-        y += 2;
+        cursorY -= 6;
       } else if ((m = trimmed.match(/^#\s+(.+)/))) {
-        if (!lastWasBlank) y += 5;
-        placeBlock(m[1], { size: 20, bold: true });
-        y += 3;
+        if (!lastWasBlank) cursorY -= 16;
+        placeBlock(m[1], { size: 22, bold: true });
+        cursorY -= 8;
       } else if ((m = trimmed.match(/^[-*]\s+(.+)/))) {
-        placeBlock(m[1], { size: 12, indent: 2, marker: '•', markerWidth: 5 });
+        placeBlock(m[1], { size: 12, indent: 6, marker: '•', markerWidth: 14 });
       } else if ((m = trimmed.match(/^(\d+)[\.\)]\s+(.+)/))) {
-        placeBlock(m[2], { size: 12, indent: 2, marker: m[1] + '.', markerWidth: 7 });
+        placeBlock(m[2], { size: 12, indent: 6, marker: m[1] + '.', markerWidth: 20 });
       } else if ((m = trimmed.match(/^>\s+(.+)/))) {
-        placeBlock(m[1], { size: 12, indent: 6 });
+        placeBlock(m[1], { size: 12, indent: 16 });
       } else {
         placeBlock(trimmed, { size: 12 });
       }
       lastWasBlank = false;
     }
 
-    pdf.save('cleartext-output.pdf');
+    // Serialize and trigger the download without any dialog or popup.
+    const pdfBytes = await pdfDoc.save();
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'cleartext-output.pdf';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
   } catch (err) {
     console.error('PDF export failed:', err);
     alert('Could not generate the PDF. ' + (err.message || 'Unknown error.'));
@@ -606,8 +695,8 @@ async function downloadPDF() {
 }
 
 // Removes markdown bold/italic/link markers so the text placed in the PDF
-// reads naturally. Kept minimal — we're not trying to render bold inside
-// paragraphs, just strip the syntax noise.
+// reads naturally. Kept minimal — we're not rendering bold spans inside
+// paragraphs, just stripping the raw syntax so it doesn't show up literally.
 function stripInlineMarkdown(str) {
   return String(str)
     .replace(/\*\*(.+?)\*\*/g, '$1')
