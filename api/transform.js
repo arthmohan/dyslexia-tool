@@ -9,7 +9,7 @@ import {
 } from './transform-utils.js';
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
+const GROQ_MODEL = process.env.GROQ_MODEL || 'moonshotai/kimi-k2-instruct';
 const MAX_RETRIES = 2;
 
 function parseCSVLine(line) {
