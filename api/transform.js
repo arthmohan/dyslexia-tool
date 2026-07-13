@@ -96,7 +96,7 @@ async function requestGroq(prompt) {
       body: JSON.stringify({
         model: GROQ_MODEL,
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0.1,
+        temperature: 0.35,
         max_tokens: 4096
       })
     });
@@ -150,34 +150,31 @@ QUALITY RULES:
 - Preserve all formatting: headings, bullets, paragraph breaks, emphasis.
 - Do not add or remove content.`;
 
-// The "all" profile: replace visually difficult words but PRESERVE REGISTER.
-// The old version said "do not hold back" and the model made professional
-// documents sound childish. The rules below lead with tone preservation
-// and add an explicit do-not-touch list of common professional vocabulary.
+// The "all" profile: replace visually difficult words at the RIGHT REGISTER.
+// Previous iterations tried two extremes: "do not hold back" (which made
+// professional docs sound childish) and "preserve register above all with a
+// 40-word do-not-touch list" (which made children's text get 3 replacements
+// out of a paragraph full of candidates). This version treats register as a
+// per-document DETECTION step, not a global override, and gives the model an
+// explicit replacement target so it stops erring toward inaction.
 const ALL_QUALITY_RULES = `
-QUALITY RULES (in priority order):
+QUALITY RULES:
 
-1. PRESERVE REGISTER. This is the most important rule. If the input is professional, business, academic, or technical, the output must sound the same. Test every replacement: does the sentence still fit the document's tone? If not, keep the original word. A slightly harder word at the right register beats an easier word that sounds childish or out of place.
+1. Judge the register in one internal sentence: is this children's/general reading, professional/business writing, academic writing, or technical writing? Your replacement style depends on this. Children's and general reading gets warm, simple replacements. Professional and academic text gets replacements that stay at the right register - a slightly harder word at the right register beats an easy word that sounds childish or out of place.
 
-2. Reduce reading load by 1-2 levels, no more. Level 10 text becomes level 8-9, not level 4.
+2. Aim to replace 20-30% of content words that meet the visual-difficulty criteria. This is a real accessibility tool for dyslexic readers, not a minimal-edit tool. Do not hold back on obvious candidates. Every visually difficult word you leave unreplaced is a barrier for a dyslexic reader.
 
-3. DO NOT replace these common professional/business/academic words even if they look complex. They are already accessible and replacing them destroys register:
-   conversations, stakeholders, essential, effective, guidance, insurance, contracts, invoicing, compliance, regulations, requirements, framework, evaluation, professional, business, financial, industry, agreement, document, application, information, department, government, appropriate, particular, additional, significant, established, considerable, international, understanding, operations, activities, materials, resources, procedures, standards, policies, protocols, statements.
+3. A word is a replacement candidate if it has visual difficulty (letter confusion, 8+ characters with a shorter equivalent, or dense letter shapes) AND a natural same-register replacement exists.
 
-4. Only replace a word when BOTH conditions hold:
-   (a) it is visually difficult (letter confusion, 8+ chars with a shorter equivalent, or dense visual shape), AND
-   (b) a natural same-register replacement exists.
-   If either fails, leave the word alone.
+4. Phrase replacements ("place to stay", "make worse") often read more naturally than forced single-word swaps.
 
-5. Phrase replacements ("place to stay", "make worse") often read more naturally than forced single-word swaps.
+5. NEVER touch proper nouns, personal names, place names, species names, numbers, dates, currency, acronyms, or terms that are the subject of the passage (e.g. "photosynthesis" in a biology text, "GST" in a tax text, "Amazon" in a text about the rainforest).
 
-6. NEVER touch proper nouns, names, numbers, acronyms, dates, currency, technical terms, industry terms, or scientific terms.
+6. PRESERVE ALL FORMATTING as markdown. Headings stay headings (# ## ###). Bullets stay bullets (- or *). Numbered lists stay numbered (1. 2. 3.). Paragraph breaks stay. Bold and italic stay.
 
-7. PRESERVE ALL FORMATTING as markdown. Headings stay headings (# ## ###). Bullets stay bullets (- or *). Numbered lists stay numbered (1. 2. 3.). Paragraph breaks stay. Bold and italic stay.
+7. Do not add or remove content. Never invent new phrases, clauses, or sentences. Only replace existing words.
 
-8. Do not add or remove content. Never invent new phrases, clauses, or sentences. Only replace existing words.
-
-9. Return the output as clean markdown so the frontend can render it. Do not wrap the response in code fences.`;
+8. Return the output as clean markdown. No commentary. No code fences.`;
 
 // ── Per-profile prompts ──
 
@@ -191,14 +188,14 @@ ${good.length > 0 ? good.join('\n') : ''}
 ${bad.length > 0 ? '\nKnown bad (never do these):\n' + bad.join('\n') : ''}`;
   }
 
-  return `You are a dyslexia accessibility tool for adult readers of professional, academic, business, and general documents. Your job is to make text easier for dyslexic readers WITHOUT changing what the document sounds like.
+  return `You are a dyslexia accessibility tool. Your job is to make text easier for dyslexic readers by replacing visually difficult words with clearer alternatives, while preserving the meaning and voice of the original text.
 
 Target words that are hard to read because of:
 - Confusing letter patterns (b/d, p/q, l/i, ll, dd, bb, pp)
-- Excessive length (8+ characters where a shorter same-register option exists)
+- Excessive length (8+ characters where a shorter equivalent exists)
 - Visually crowded shapes (double letters, dense ascender/descender clusters)
 
-Be selective. A dyslexic professional reading a business checklist wants a business checklist that is easier to scan, not a simplified children's version. When in doubt, leave the word alone. Preserving tone matters more than replacing every candidate word.
+Be thorough. Scan every content word. Every visually difficult word you leave unreplaced is a barrier for a dyslexic reader. Aim to catch every reasonable candidate.
 ${ALL_QUALITY_RULES}
 ${examplesSection}
 ${chunkNote}
