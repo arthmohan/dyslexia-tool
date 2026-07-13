@@ -2,11 +2,17 @@
 
 const SETTINGS_KEY = 'cleartext-settings-v1';
 const VALID_SETTINGS = {
-  font:    ['comic', 'opendys'],
-  spacing: ['normal', 'wide'],
-  theme:   ['cream', 'dark', 'peach', 'contrast']
+  font:         ['comic', 'opendys'],
+  spacing:      ['normal', 'wide'],
+  theme:        ['cream', 'dark', 'peach', 'contrast'],
+  readingLevel: ['elementary', 'middle', 'high', 'formal']
 };
-const DEFAULT_SETTINGS = { font: 'comic', spacing: 'normal', theme: 'cream' };
+const DEFAULT_SETTINGS = {
+  font: 'comic',
+  spacing: 'normal',
+  theme: 'cream',
+  readingLevel: 'high'
+};
 
 function loadSettings() {
   try {
@@ -38,14 +44,17 @@ function toggleSettings() {
 }
 
 function applySetting(group, value) {
+  // Visual settings toggle a class on the body. Non-visual settings
+  // (e.g. reading level) only need the button "active" state synced.
   const groupClasses = {
     font:    ['font-comic', 'font-opendys'],
     spacing: ['spacing-normal', 'spacing-wide'],
     theme:   ['theme-cream', 'theme-dark', 'theme-peach', 'theme-contrast']
   }[group];
-  if (!groupClasses) return;
-  document.body.classList.remove(...groupClasses);
-  document.body.classList.add(`${group}-${value}`);
+  if (groupClasses) {
+    document.body.classList.remove(...groupClasses);
+    document.body.classList.add(`${group}-${value}`);
+  }
 
   // Sync the button "active" state so restored settings show up in the UI.
   document.querySelectorAll(`[data-group="${group}"]`).forEach(b => {
@@ -67,6 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
   applySetting('font', settings.font);
   applySetting('spacing', settings.spacing);
   applySetting('theme', settings.theme);
+  applySetting('readingLevel', settings.readingLevel);
 
   // ── Character counter ──
   const textarea = document.getElementById('paste-input');
@@ -366,6 +376,7 @@ async function runTransform() {
 
   const profile = document.querySelector('input[name="profile"]:checked').value;
   const source = window._inputSource || 'paste';
+  const readingLevel = loadSettings().readingLevel;
   const btn = document.getElementById('btn-transform');
   const progressWrap = document.getElementById('progress-wrap');
   const progressLabel = document.getElementById('progress-label');
@@ -379,7 +390,7 @@ async function runTransform() {
     const transformRes = await fetch('/api/transform', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, profile, source })
+      body: JSON.stringify({ text, profile, source, readingLevel })
     });
 
     if (!transformRes.ok) {

@@ -556,8 +556,34 @@ footer {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
-  margin-bottom: 12px;
+  margin-bottom: 6px;
 }
+
+.settings-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0 0 12px;
+  opacity: 0.85;
+}
+
+.opt-title {
+  display: block;
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.opt-sub {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-top: 3px;
+  line-height: 1.35;
+}
+
+.opt-btn.active .opt-sub { color: var(--accent); opacity: 0.85; }
 
 .settings-options {
   display: flex;

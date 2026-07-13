@@ -63,6 +63,29 @@
         </button>
       </div>
     </div>
+
+    <div class="settings-group">
+      <p class="settings-label">Reading Level</p>
+      <p class="settings-hint">Tells the tool how much to simplify. Pick the grade level of the reader.</p>
+      <div class="settings-options">
+        <button class="opt-btn" data-group="readingLevel" data-value="elementary" onclick="setSetting('readingLevel', this)">
+          <span class="opt-title">Elementary</span>
+          <span class="opt-sub">Grade 3-5 • aggressive simplification</span>
+        </button>
+        <button class="opt-btn" data-group="readingLevel" data-value="middle" onclick="setSetting('readingLevel', this)">
+          <span class="opt-title">Middle School</span>
+          <span class="opt-sub">Grade 6-8 • moderate simplification</span>
+        </button>
+        <button class="opt-btn active" data-group="readingLevel" data-value="high" onclick="setSetting('readingLevel', this)">
+          <span class="opt-title">High School</span>
+          <span class="opt-sub">Grade 9-12 • light touch</span>
+        </button>
+        <button class="opt-btn" data-group="readingLevel" data-value="formal" onclick="setSetting('readingLevel', this)">
+          <span class="opt-title">College / Formal</span>
+          <span class="opt-sub">Academic, historical, professional • preserve register</span>
+        </button>
+      </div>
+    </div>
   </div>
 
   <div class="settings-overlay" id="settings-overlay" onclick="toggleSettings()"></div>
@@ -167,7 +190,7 @@
   <script src="https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
-  <script src="app.js?v=20260708-6"></script>
+  <script src="app.js?v=20260709-1"></script>
 
 </body>
 </html>

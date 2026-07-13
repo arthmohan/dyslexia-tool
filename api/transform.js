@@ -160,7 +160,14 @@ QUALITY RULES:
 const ALL_QUALITY_RULES = `
 QUALITY RULES:
 
-1. Judge the register in one internal sentence: is this children's/general reading, professional/business writing, academic writing, or technical writing? Your replacement style depends on this. Children's and general reading gets warm, simple replacements. Professional and academic text gets replacements that stay at the right register - a slightly harder word at the right register beats an easy word that sounds childish or out of place.
+1. Before you start, judge the register in one internal sentence. Register is a strict constraint on how far you can simplify.
+
+   - CHILDREN'S / GENERAL reading (nature articles, story-style writing, casual explainers): warm tone, everyday vocabulary. Your replacements can be warm and simple.
+   - ADULT NEUTRAL (news, informational articles, general non-fiction): must still sound like a well-written adult article, not a children's book.
+   - PROFESSIONAL / BUSINESS: preserve professional vocabulary. Words like "conversations", "stakeholders", "essential", "conservation" stay.
+   - ACADEMIC / HISTORICAL / TECHNICAL: research writing, historical narrative, science, biography of important figures. Preserve formal register strictly. "Illustrated manuscripts" stays as "illustrated manuscripts", never "drawn manuscripts". "Surrounded himself with advisors" stays, never "encircled". "Magnificent buildings" or "monumental buildings", never "pretty buildings".
+
+   Historical figures (Akbar, Napoleon, Gandhi), government/policy documents, scientific research, and biographies of important people are ALWAYS academic/formal register regardless of the surface simplicity of the words used.
 
 2. Aim to replace 20-30% of content words that meet the visual-difficulty criteria. This is a real accessibility tool for dyslexic readers, not a minimal-edit tool. Do not hold back on obvious candidates. Every visually difficult word you leave unreplaced is a barrier for a dyslexic reader.
 
@@ -170,7 +177,22 @@ QUALITY RULES:
 
 4a. Do not replace with metaphors or figurative words. "sustainable" -> "green" is wrong because "green" shifts the meaning to color or metaphor. "environmental" -> "green" is wrong for the same reason. The replacement must mean literally the same thing as the original.
 
-4b. Do not drift register downward on adult text. "Estimate" does not become "guess". "Consequences" does not become "results" or "outcomes" unless the text is already casual. "Indigenous communities" does not become "Native groups" - those are not synonyms. Match the register of the input; do not simplify below it.
+4b. Do not drift register downward on adult text. Specific errors to never make:
+   - "estimate" -> "guess" (estimate stays)
+   - "consequences" -> "results" (loses the causal-negative meaning)
+   - "populations" -> "groups" (populations is the correct ecology term)
+   - "poaching" -> "hunting" (loses "illegal"; if you must replace, use "illegal hunting")
+   - "survival" -> "life" (they mean different things)
+   - "ultimately" -> "finally" (ultimately means "at its root/in the end", finally is temporal)
+   - "Indigenous" -> "Native" (not modern synonyms)
+   - "conservation" -> "protection" (conservation is a specific term; leave alone or use "saving")
+   - "illustrated" -> "drawn" (illustrated is the correct manuscript term)
+   - "surrounded" -> "encircled" (encircled means physically or militarily surrounded)
+   - "immediately" -> "right away" (right away is casual register)
+   - "commissioned/built" -> "set up" (rulers do not "set up" buildings)
+   - "magnificent/monumental" -> "pretty" (pretty is never right for architecture, historical sites, or important places)
+   - "communities" -> "groups" (communities carries a shared-identity meaning that groups does not)
+   Match the register of the input; do not simplify below it.
 
 4c. Do not change quantities or specifics. "Thousands of years" does not become "many years" - that loses information. "Detailed knowledge" does not become "full knowledge" - those mean different things. Substitute words that mean the same thing, not words that are just easier or more general.
 
@@ -185,7 +207,14 @@ QUALITY RULES:
 
 7. Do not add or remove content. Never invent new phrases, clauses, or sentences. Only replace existing words.
 
-8. Return the output as clean markdown. No commentary. No code fences.`;
+8. Return the output as clean markdown. No commentary. No code fences.
+
+9. GRAMMAR CHECK every replacement before finalising. A broken-grammar output is worse than an unreplaced word.
+   - Past participles after "have/has/had": "they have gone" not "they have went". "she has seen" not "she has saw". "they had come" not "they had came".
+   - Noun vs adjective mismatch: "the difficulty of the task" (noun) cannot become "the hard of the task" (adjective). Either replace the entire phrase ("the difficulty of the task" -> "how hard the task is") or leave both words alone.
+   - Article + noun agreement: "a policy" cannot become "a policies".
+   - Verb tense consistency across the sentence.
+   If any replacement produces broken grammar, revert it.`;
 
 // ── Per-profile prompts ──
 
@@ -293,13 +322,46 @@ const promptBuilders = {
   all: buildAllPrompt
 };
 
-async function transformChunk(chunk, profile, chunkIndex, totalChunks) {
+// User-selected reading level target. Prepended to every prompt so the model
+// knows how aggressively to simplify BEFORE it does register detection on
+// its own. Solves the problem of the model reading a historical/formal text
+// as if it were casual because the sentences happen to be short.
+const READING_LEVEL_PREAMBLE = {
+  elementary: `READER TARGET: Elementary school student (Grade 3-5, roughly age 8-10).
+Replace freely. Warm, simple, everyday vocabulary is welcome. You may drop
+below the source register if the replacement is genuinely easier for a young
+reader. Aim for the top of the 20-30% replacement range.`,
+
+  middle: `READER TARGET: Middle school student (Grade 6-8, roughly age 11-14).
+Replace moderately. Use everyday adult vocabulary. Do not go down to
+children's register. Aim for the middle of the 20-30% replacement range.`,
+
+  high: `READER TARGET: High school student / general adult reader (Grade 9-12).
+Replace with a light touch. Preserve the register of the source. Do not
+simplify below the source level. Aim for the lower end of the 20-30%
+replacement range - selectivity matters more than volume here.`,
+
+  formal: `READER TARGET: College / academic / professional / historical reader.
+Preserve the formal register STRICTLY. Only replace words that are visually
+difficult AND have a same-register synonym. Historical narratives about
+figures like Emperor Akbar, scientific writing, legal documents, and
+professional/business writing all fall in this category regardless of
+sentence length. When in doubt, LEAVE THE WORD ALONE. Aim for 10-15%
+replacement, quality over volume.`
+};
+
+function getReadingLevelPreamble(readingLevel) {
+  return READING_LEVEL_PREAMBLE[readingLevel] || READING_LEVEL_PREAMBLE.high;
+}
+
+async function transformChunk(chunk, profile, chunkIndex, totalChunks, readingLevel) {
   const chunkNote = totalChunks > 1
     ? `\nThis is chunk ${chunkIndex + 1} of ${totalChunks}. Keep consistent tone and style.`
     : '';
 
   const builder = promptBuilders[profile] || promptBuilders.all;
-  const prompt = builder(chunk, chunkNote);
+  const preamble = getReadingLevelPreamble(readingLevel);
+  const prompt = `${preamble}\n\n${builder(chunk, chunkNote)}`;
   const data = await requestGroq(prompt);
   const transformed = cleanupTransformedText(data.choices?.[0]?.message?.content || '');
 
@@ -315,7 +377,7 @@ async function transformChunk(chunk, profile, chunkIndex, totalChunks) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { text, profile } = req.body;
+  const { text, profile, readingLevel } = req.body;
   const normalizedText = normalizeInputText(text);
 
   if (!normalizedText) return res.status(400).json({ error: 'No text provided' });
@@ -327,13 +389,14 @@ export default async function handler(req, res) {
   }
 
   const validProfile = promptBuilders[profile] ? profile : 'all';
+  const validReadingLevel = READING_LEVEL_PREAMBLE[readingLevel] ? readingLevel : 'high';
 
   try {
     const chunks = splitIntoChunks(normalizedText);
     const transformedChunks = [];
 
     for (let i = 0; i < chunks.length; i++) {
-      const transformedChunk = await transformChunk(chunks[i], validProfile, i, chunks.length);
+      const transformedChunk = await transformChunk(chunks[i], validProfile, i, chunks.length, validReadingLevel);
       transformedChunks.push(transformedChunk);
     }
 
