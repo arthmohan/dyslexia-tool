@@ -9,7 +9,7 @@ import {
 } from './transform-utils.js';
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = process.env.GROQ_MODEL || 'moonshotai/kimi-k2-instruct';
+const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
 const MAX_RETRIES = 2;
 
 function parseCSVLine(line) {
@@ -168,7 +168,18 @@ QUALITY RULES:
 
 4. Phrase replacements ("place to stay", "make worse") often read more naturally than forced single-word swaps.
 
-5. NEVER touch proper nouns, personal names, place names, species names, numbers, dates, currency, acronyms, or terms that are the subject of the passage (e.g. "photosynthesis" in a biology text, "GST" in a tax text, "Amazon" in a text about the rainforest).
+4a. Do not replace with metaphors or figurative words. "sustainable" -> "green" is wrong because "green" shifts the meaning to color or metaphor. "environmental" -> "green" is wrong for the same reason. The replacement must mean literally the same thing as the original.
+
+4b. Do not drift register downward on adult text. "Estimate" does not become "guess". "Consequences" does not become "results" or "outcomes" unless the text is already casual. "Indigenous communities" does not become "Native groups" - those are not synonyms. Match the register of the input; do not simplify below it.
+
+4c. Do not change quantities or specifics. "Thousands of years" does not become "many years" - that loses information. "Detailed knowledge" does not become "full knowledge" - those mean different things. Substitute words that mean the same thing, not words that are just easier or more general.
+
+5. NEVER touch, no matter how visually difficult they look:
+   - Proper nouns, personal names, place names.
+   - Species names or animal names (anacondas, dolphins, elephants, jaguars, sharks, etc.). If the passage is about an animal, that animal's name stays exactly as written.
+   - Numbers, quantifiers, and quantities. "Thousands", "millions", "billion", "hundred", "several" stay. The modifier "approximately" can be swapped to "about", but the number itself stays.
+   - Dates, currency, acronyms.
+   - Scientific or technical terms that are the subject of the passage.
 
 6. PRESERVE ALL FORMATTING as markdown. Headings stay headings (# ## ###). Bullets stay bullets (- or *). Numbered lists stay numbered (1. 2. 3.). Paragraph breaks stay. Bold and italic stay.
 
