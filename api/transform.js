@@ -192,6 +192,15 @@ QUALITY RULES:
    - "commissioned/built" -> "set up" (rulers do not "set up" buildings)
    - "magnificent/monumental" -> "pretty" (pretty is never right for architecture, historical sites, or important places)
    - "communities" -> "groups" (communities carries a shared-identity meaning that groups does not)
+   - "communities" -> "neighborhoods" (neighborhoods are residential areas, not communities of people)
+   - "magnificent" -> "lovely" or "grand" -> "lovely" ("lovely" is never correct for architecture, historical buildings, monumental structures, or grand places; use "magnificent", "grand", "impressive", or leave alone)
+   - "beautiful" or "magnificent buildings" -> "lovely buildings" (same reason as above; buildings in a historical or academic context are never "lovely")
+   - "musician" -> "player" or "performer" -> "player" ("player" implies a sports player or game player; musicians, artists, and performers stay in their own words)
+   - "artist" -> "player" (same reason)
+   - "capital" -> "seat" ("seat" has a specific meaning, "seat of power/government/office", that differs from "capital"; preserve "capital" as-is)
+   - "consequences" -> "outcomes" ("outcomes" suggests intended goals or results of a plan; "consequences" are causal effects, often negative; not synonyms)
+   - "manuscripts" -> "texts" (manuscripts are hand-written or hand-illustrated original documents; "texts" is broader and weaker)
+   - "minister" -> "official" (a minister is a specific role in a government or court; keep "minister")
    Match the register of the input; do not simplify below it.
 
 4c. Do not change quantities or specifics. "Thousands of years" does not become "many years" - that loses information. "Detailed knowledge" does not become "full knowledge" - those mean different things. Substitute words that mean the same thing, not words that are just easier or more general.
@@ -202,8 +211,18 @@ QUALITY RULES:
    - Numbers, quantifiers, and quantities. "Thousands", "millions", "billion", "hundred", "several" stay. The modifier "approximately" can be swapped to "about", but the number itself stays.
    - Dates, currency, acronyms.
    - Scientific or technical terms that are the subject of the passage.
+   - Titles of rank or office (Emperor, King, Prime Minister, President, Doctor, Professor, etc.) - these are proper titles and stay as written.
+
+5a. NEVER replace the SUBJECT of the passage. If a word is central to what the text is about, keep that word exactly as written - it is the anchor the reader is following:
+   - "rainforest" in a text about the Amazon rainforest stays "rainforest", not "tropical forest"
+   - "elephants" in a text about elephants stays "elephants"
+   - "manuscripts" in a text about historical manuscripts stays "manuscripts", not "texts"
+   - "Emperor" in a text about an emperor stays "Emperor", not "ruler" or "king"
+   Look at the topic of the passage in your first internal register-detection sentence, then protect that topic word for the rest of the transformation.
 
 6. PRESERVE ALL FORMATTING as markdown. Headings stay headings (# ## ###). Bullets stay bullets (- or *). Numbered lists stay numbered (1. 2. 3.). Paragraph breaks stay. Bold and italic stay.
+
+6a. DO NOT ADD FORMATTING that the input did not have. Do not bold, italicise, underline, or otherwise highlight your replacements. Do not add asterisks (**word**), brackets, arrows, or any decoration to indicate which words you changed. If the input was plain text, output plain text. If the input had markdown, preserve exactly the markdown that was there and no more.
 
 7. Do not add or remove content. Never invent new phrases, clauses, or sentences. Only replace existing words.
 
