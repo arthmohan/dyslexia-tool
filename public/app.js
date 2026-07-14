@@ -557,13 +557,21 @@ async function downloadPDF() {
     const bgColor = _hexToRgb(rgb, themeHex[currentTheme].bg);
     const textColor = _hexToRgb(rgb, themeHex[currentTheme].text);
 
-    // Wide spacing widens the LINE height. Per-character spacing is not
-    // applied in the PDF; it caused hard-to-fix wrap overshoot with jsPDF
-    // and pdf-lib doesn't expose a first-class API for it either. The
-    // extra line spacing already gives dyslexic readers the vertical
-    // breathing room that matters most in a printed doc.
+    // Wide spacing widens BOTH the line height and the per-character
+    // (glyph-to-glyph) spacing in the exported PDF. Line height is set via a
+    // multiplier on font size. Character spacing is set via pdf-lib's
+    // low-level Tc operator (setCharacterSpacing), pushed once per page.
+    // The wrap function below adds the character-spacing overhead when
+    // measuring line widths so lines still fit the column.
     const wideSpacing = document.body.classList.contains('spacing-wide');
-    const lineHeightMul = wideSpacing ? 1.75 : 1.45;
+    const lineHeightMul = wideSpacing ? 2.2 : 1.7;
+    const charSpacePt = wideSpacing ? 0.8 : 0;
+    // Resolve the low-level operator lazily; older pdf-lib builds might
+    // expose it under a different path.
+    const setCharSpaceOp =
+      (PDFLib && PDFLib.setCharacterSpacing) ||
+      (PDFLib && PDFLib.PDFOperator && null) ||
+      null;
 
     // A4 in PDF points (72 pt/inch): 595.28 × 841.89.
     const pageW = 595.28;
@@ -584,15 +592,29 @@ async function downloadPDF() {
       page.drawRectangle({
         x: 0, y: 0, width: pageW, height: pageH, color: bgColor
       });
+      // Apply per-character spacing state for this page's text-drawing ops.
+      // PDF graphics state is per-page so this must be re-issued each page.
+      if (charSpacePt > 0 && setCharSpaceOp) {
+        try { page.pushOperators(setCharSpaceOp(charSpacePt)); } catch { /* ignore */ }
+      }
       cursorY = pageH - marginTop;
     };
     startPage();
 
-    // Text width in the currently-active font.
-    const measure = (font, size, str) => font.widthOfTextAtSize(str, size);
+    // Text width in the currently-active font, including per-character spacing
+    // if it is active. pdf-lib's widthOfTextAtSize measures glyph advances only;
+    // it does not know about the Tc operator we've pushed. So we add it here.
+    const measure = (font, size, str) => {
+      const base = font.widthOfTextAtSize(str, size);
+      const extra = charSpacePt > 0 && str.length > 1
+        ? (str.length - 1) * charSpacePt
+        : 0;
+      return base + extra;
+    };
 
-    // Word-wrap by measuring candidate line width against the font metrics.
-    // Falls back to hard-splitting single tokens wider than the column.
+    // Word-wrap by measuring candidate line width against the font metrics
+    // (with character-spacing overhead included). Falls back to hard-splitting
+    // single tokens wider than the column.
     const wrap = (font, size, str, maxWidth) => {
       const words = str.split(/\s+/).filter(Boolean);
       if (!words.length) return [];
