@@ -220,6 +220,15 @@ QUALITY RULES:
    - "Emperor" in a text about an emperor stays "Emperor", not "ruler" or "king"
    Look at the topic of the passage in your first internal register-detection sentence, then protect that topic word for the rest of the transformation.
 
+5b. NEVER replace scientific, technical, medical, or academic vocabulary in a text that is teaching those terms. This is broader than 5a: it includes not only the top-level subject but also the specialised terms the passage introduces, defines, or uses to explain concepts. If the term would appear in a school-exam vocabulary list, glossary, or textbook index for that topic, KEEP IT AS WRITTEN. Replacing it destroys what the passage is teaching and gives the reader the wrong word for their coursework.
+   - In a biology passage: chloroplasts, mitochondria, photosynthesis, organisms, glucose, chemical energy, cells, tissues, ecosystem, species, DNA, chromosomes stay as written (do NOT become "cell parts", "energy makers", "creatures", "stored energy", "living things", etc.)
+   - In a chemistry passage: elements, compounds, molecules, reactions, catalysts, ions, isotopes, valence, atomic number stay
+   - In a physics passage: velocity, acceleration, momentum, gravity, force, energy, wavelength, frequency stay
+   - In a medical passage: diagnosis, symptoms, prognosis, treatment, chronic, acute, inflammation stay
+   - In a history passage: dynasty, monarchy, empire, revolution, constitution, sovereignty, colonisation stay
+   - In a legal or civics passage: jurisdiction, legislation, amendment, statute, tribunal, plaintiff, defendant stay
+   Structural science words like "structures", "mechanism", "process", "reaction" also stay when used in their technical sense (a "biological mechanism" is not the same as a "biological system"; "specialised structures" is not "special forms").
+
 6. PRESERVE ALL FORMATTING as markdown. Headings stay headings (# ## ###). Bullets stay bullets (- or *). Numbered lists stay numbered (1. 2. 3.). Paragraph breaks stay. Bold and italic stay.
 
 6a. DO NOT ADD FORMATTING that the input did not have. Do not bold, italicise, underline, or otherwise highlight your replacements. Do not add asterisks (**word**), brackets, arrows, or any decoration to indicate which words you changed. If the input was plain text, output plain text. If the input had markdown, preserve exactly the markdown that was there and no more.
